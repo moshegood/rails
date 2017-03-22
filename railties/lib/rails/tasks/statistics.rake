@@ -7,7 +7,8 @@ STATS_DIRECTORIES = [
   %w(Jobs               app/jobs),
   %w(Models             app/models),
   %w(Mailers            app/mailers),
-  %w(Javascripts        app/assets/javascripts),
+  %w(Channels           app/channels),
+  %w(JavaScripts        app/assets/javascripts),
   %w(Libraries          lib/),
   %w(APIs               app/apis),
   %w(Controller\ tests  test/controllers),
@@ -16,12 +17,13 @@ STATS_DIRECTORIES = [
   %w(Mailer\ tests      test/mailers),
   %w(Job\ tests         test/jobs),
   %w(Integration\ tests test/integration),
+  %w(System\ tests      test/system),
 ].collect do |name, dir|
   [ name, "#{File.dirname(Rake.application.rakefile_location)}/#{dir}" ]
 end.select { |name, dir| File.directory?(dir) }
 
 desc "Report code statistics (KLOCs, etc) from the application or engine"
 task :stats do
-  require 'rails/code_statistics'
+  require "rails/code_statistics"
   CodeStatistics.new(*STATS_DIRECTORIES).to_s
 end

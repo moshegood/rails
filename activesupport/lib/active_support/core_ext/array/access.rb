@@ -31,7 +31,7 @@ class Array
   #
   #   people = ["David", "Rafael", "Aaron", "Todd"]
   #   people.without "Aaron", "Todd"
-  #     => ["David", "Rafael"]
+  #   # => ["David", "Rafael"]
   #
   # Note: This is an optimization of `Enumerable#without` that uses `Array#-`
   # instead of `Array#reject` for performance reasons.
@@ -72,5 +72,19 @@ class Array
   #   (1..42).to_a.forty_two # => 42
   def forty_two
     self[41]
+  end
+
+  # Equal to <tt>self[-3]</tt>.
+  #
+  #   %w( a b c d e ).third_to_last # => "c"
+  def third_to_last
+    self[-3]
+  end
+
+  # Equal to <tt>self[-2]</tt>.
+  #
+  #   %w( a b c d e ).second_to_last # => "d"
+  def second_to_last
+    self[-2]
   end
 end

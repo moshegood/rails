@@ -1,4 +1,5 @@
-require 'active_support/inflector/methods'
+require "active_support/inflector/methods"
+require "active_support/core_ext/regexp"
 
 module ActiveSupport
   class Deprecation
@@ -10,7 +11,7 @@ module ActiveSupport
         super
       end
 
-      instance_methods.each { |m| undef_method m unless m =~ /^__|^object_id$/ }
+      instance_methods.each { |m| undef_method m unless /^__|^object_id$/.match?(m) }
 
       # Don't give a deprecation warning on inspect since test/unit and error
       # logs rely on it for diagnostics.
@@ -20,7 +21,7 @@ module ActiveSupport
 
       private
         def method_missing(called, *args, &block)
-          warn caller, called, args
+          warn caller_locations, called, args
           target.__send__(called, *args, &block)
         end
     end
@@ -80,7 +81,7 @@ module ActiveSupport
     #   example.old_request.to_s
     #   # => DEPRECATION WARNING: @request is deprecated! Call request.to_s instead of
     #      @request.to_s
-    #      (Bactrace information…)
+    #      (Backtrace information…)
     #      "special_request"
     #
     #   example.request.to_s
@@ -111,20 +112,21 @@ module ActiveSupport
     #
     #   PLANETS = %w(mercury venus earth mars jupiter saturn uranus neptune pluto)
     #
-    #   (In a later update, the orignal implementation of `PLANETS` has been removed.)
+    #   (In a later update, the original implementation of `PLANETS` has been removed.)
     #
     #   PLANETS_POST_2006 = %w(mercury venus earth mars jupiter saturn uranus neptune)
     #   PLANETS = ActiveSupport::Deprecation::DeprecatedConstantProxy.new('PLANETS', 'PLANETS_POST_2006')
     #
     #   PLANETS.map { |planet| planet.capitalize }
     #   # => DEPRECATION WARNING: PLANETS is deprecated! Use PLANETS_POST_2006 instead.
-    #        (Bactrace information…)
+    #        (Backtrace information…)
     #        ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"]
     class DeprecatedConstantProxy < DeprecationProxy
-      def initialize(old_const, new_const, deprecator = ActiveSupport::Deprecation.instance)
+      def initialize(old_const, new_const, deprecator = ActiveSupport::Deprecation.instance, message: "#{old_const} is deprecated! Use #{new_const} instead.")
         @old_const = old_const
         @new_const = new_const
         @deprecator = deprecator
+        @message = message
       end
 
       # Returns the class of the new constant.
@@ -142,7 +144,7 @@ module ActiveSupport
         end
 
         def warn(callstack, called, args)
-          @deprecator.warn("#{@old_const} is deprecated! Use #{@new_const} instead.", callstack)
+          @deprecator.warn(@message, callstack)
         end
     end
   end

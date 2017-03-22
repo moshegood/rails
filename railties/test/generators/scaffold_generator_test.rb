@@ -1,5 +1,5 @@
-require 'generators/generators_test_helper'
-require 'rails/generators/rails/scaffold/scaffold_generator'
+require "generators/generators_test_helper"
+require "rails/generators/rails/scaffold/scaffold_generator"
 
 class ScaffoldGeneratorTest < Rails::Generators::TestCase
   include GeneratorsTestHelper
@@ -11,11 +11,11 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     run_generator
 
     # Model
-    assert_file "app/models/product_line.rb", /class ProductLine < ActiveRecord::Base/
+    assert_file "app/models/product_line.rb", /class ProductLine < ApplicationRecord/
     assert_file "test/models/product_line_test.rb", /class ProductLineTest < ActiveSupport::TestCase/
     assert_file "test/fixtures/product_lines.yml"
-    assert_migration "db/migrate/create_product_lines.rb", /belongs_to :product, index: true/
-    assert_migration "db/migrate/create_product_lines.rb", /references :user, index: true/
+    assert_migration "db/migrate/create_product_lines.rb", /belongs_to :product/
+    assert_migration "db/migrate/create_product_lines.rb", /references :user/
 
     # Route
     assert_file "config/routes.rb" do |route|
@@ -57,9 +57,14 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     end
 
     assert_file "test/controllers/product_lines_controller_test.rb" do |test|
-      assert_match(/class ProductLinesControllerTest < ActionController::TestCase/, test)
-      assert_match(/post :create, params: \{ product_line: \{ product_id: @product_line\.product_id, title: @product_line\.title, user_id: @product_line\.user_id \} \}/, test)
-      assert_match(/patch :update, params: \{ id: @product_line, product_line: \{ product_id: @product_line\.product_id, title: @product_line\.title, user_id: @product_line\.user_id \} \}/, test)
+      assert_match(/class ProductLinesControllerTest < ActionDispatch::IntegrationTest/, test)
+      assert_match(/post product_lines_url, params: \{ product_line: \{ product_id: @product_line\.product_id, title: @product_line\.title, user_id: @product_line\.user_id \} \}/, test)
+      assert_match(/patch product_line_url\(@product_line\), params: \{ product_line: \{ product_id: @product_line\.product_id, title: @product_line\.title, user_id: @product_line\.user_id \} \}/, test)
+    end
+
+    # System tests
+    assert_file "test/system/product_lines_test.rb" do |test|
+      assert_match(/class ProductLinesTest < ApplicationSystemTestCase/, test)
     end
 
     # Views
@@ -74,8 +79,8 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     end
 
     assert_file "app/views/product_lines/_form.html.erb" do |test|
-      assert_match 'product_line', test
-      assert_no_match '@product_line', test
+      assert_match "product_line", test
+      assert_no_match "@product_line", test
     end
 
     # Helpers
@@ -91,11 +96,11 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     run_generator %w(product_line title:string product:belongs_to user:references --api --no-template-engine --no-helper --no-assets)
 
     # Model
-    assert_file "app/models/product_line.rb", /class ProductLine < ActiveRecord::Base/
+    assert_file "app/models/product_line.rb", /class ProductLine < ApplicationRecord/
     assert_file "test/models/product_line_test.rb", /class ProductLineTest < ActiveSupport::TestCase/
     assert_file "test/fixtures/product_lines.yml"
-    assert_migration "db/migrate/create_product_lines.rb", /belongs_to :product, index: true/
-    assert_migration "db/migrate/create_product_lines.rb", /references :user, index: true/
+    assert_migration "db/migrate/create_product_lines.rb", /belongs_to :product/
+    assert_migration "db/migrate/create_product_lines.rb", /references :user/
 
     # Route
     assert_file "config/routes.rb" do |route|
@@ -135,9 +140,9 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     end
 
     assert_file "test/controllers/product_lines_controller_test.rb" do |test|
-      assert_match(/class ProductLinesControllerTest < ActionController::TestCase/, test)
-      assert_match(/post :create, params: \{ product_line: \{ product_id: @product_line\.product_id, title: @product_line\.title, user_id: @product_line\.user_id \} \}/, test)
-      assert_match(/patch :update, params: \{ id: @product_line, product_line: \{ product_id: @product_line\.product_id, title: @product_line\.title, user_id: @product_line\.user_id \} \}/, test)
+      assert_match(/class ProductLinesControllerTest < ActionDispatch::IntegrationTest/, test)
+      assert_match(/post product_lines_url, params: \{ product_line: \{ product_id: @product_line\.product_id, title: @product_line\.title, user_id: @product_line\.user_id \} \}/, test)
+      assert_match(/patch product_line_url\(@product_line\), params: \{ product_line: \{ product_id: @product_line\.product_id, title: @product_line\.title, user_id: @product_line\.user_id \} \}/, test)
       assert_no_match(/assert_redirected_to/, test)
     end
 
@@ -161,10 +166,10 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     run_generator ["product_line"]
 
     assert_file "test/controllers/product_lines_controller_test.rb" do |content|
-      assert_match(/class ProductLinesControllerTest < ActionController::TestCase/, content)
+      assert_match(/class ProductLinesControllerTest < ActionDispatch::IntegrationTest/, content)
       assert_match(/test "should get index"/, content)
-      assert_match(/post :create, params: \{ product_line: \{  \} \}/, content)
-      assert_match(/patch :update, params: \{ id: @product_line, product_line: \{  \} \}/, content)
+      assert_match(/post product_lines_url, params: \{ product_line: \{  \} \}/, content)
+      assert_match(/patch product_line_url\(@product_line\), params: \{ product_line: \{  \} \}/, content)
     end
   end
 
@@ -205,7 +210,7 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
 
     # Model
     assert_file "app/models/admin.rb", /module Admin/
-    assert_file "app/models/admin/role.rb", /class Admin::Role < ActiveRecord::Base/
+    assert_file "app/models/admin/role.rb", /class Admin::Role < ApplicationRecord/
     assert_file "test/models/admin/role_test.rb", /class Admin::RoleTest < ActiveSupport::TestCase/
     assert_file "test/fixtures/admin/roles.yml"
     assert_migration "db/migrate/create_admin_roles.rb"
@@ -250,7 +255,7 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     end
 
     assert_file "test/controllers/admin/roles_controller_test.rb",
-                /class Admin::RolesControllerTest < ActionController::TestCase/
+                /class Admin::RolesControllerTest < ActionDispatch::IntegrationTest/
 
     # Views
     %w(index edit new show _form).each do |view|
@@ -269,7 +274,7 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
 
   def test_scaffold_with_namespace_on_revoke
     run_generator [ "admin/role", "name:string", "description:string" ]
-    run_generator [ "admin/role" ], :behavior => :revoke
+    run_generator [ "admin/role" ], behavior: :revoke
 
     # Model
     assert_file "app/models/admin.rb" # ( should not be remove )
@@ -310,7 +315,7 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     end
     File.open(route_path, "wb") { |file| file.write(content) }
 
-    run_generator ["product_line"], :behavior => :revoke
+    run_generator ["product_line"], behavior: :revoke
 
     assert_file "config/routes.rb", /\.routes\.draw do\s*\|map\|\s*$/
   end
@@ -322,13 +327,13 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     content = File.read(route_path)
 
     # Remove all of the comments and blank lines from the routes file
-    content.gsub!(/^  \#.*\n/, '')
-    content.gsub!(/^\n/, '')
+    content.gsub!(/^  \#.*\n/, "")
+    content.gsub!(/^\n/, "")
 
     File.open(route_path, "wb") { |file| file.write(content) }
     assert_file "config/routes.rb", /\.routes\.draw do\n  resources :product_lines\nend\n\z/
 
-    run_generator ["product_line"], :behavior => :revoke
+    run_generator ["product_line"], behavior: :revoke
 
     assert_file "config/routes.rb", /\.routes\.draw do\nend\n\z/
   end
@@ -432,8 +437,8 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     end
 
     assert_file "app/views/accounts/_form.html.erb" do |content|
-      assert_match(/^\W{4}<%= f\.text_field :name %>/, content)
-      assert_match(/^\W{4}<%= f\.text_field :currency_id %>/, content)
+      assert_match(/^\W{4}<%= form\.text_field :name %>/, content)
+      assert_match(/^\W{4}<%= form\.text_field :currency_id %>/, content)
     end
   end
 
@@ -456,8 +461,8 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     end
 
     assert_file "app/views/users/_form.html.erb" do |content|
-      assert_match(/<%= f\.password_field :password %>/, content)
-      assert_match(/<%= f\.password_field :password_confirmation %>/, content)
+      assert_match(/<%= form\.password_field :password %>/, content)
+      assert_match(/<%= form\.password_field :password_confirmation %>/, content)
     end
 
     assert_file "app/views/users/index.html.erb" do |content|
@@ -486,9 +491,29 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     Dir.chdir(engine_path) do
       quietly do
         `bin/rails g scaffold User name:string age:integer;
-        bundle exec rake db:migrate`
+        bin/rails db:migrate`
       end
-      assert_match(/8 runs, 13 assertions, 0 failures, 0 errors/, `bundle exec rake test 2>&1`)
+      assert_match(/8 runs, 10 assertions, 0 failures, 0 errors/, `bin/rails test 2>&1`)
+    end
+  end
+
+  def test_scaffold_tests_pass_by_default_inside_namespaced_mountable_engine
+    Dir.chdir(destination_root) { `bundle exec rails plugin new bukkits-admin --mountable` }
+
+    engine_path = File.join(destination_root, "bukkits-admin")
+
+    Dir.chdir(engine_path) do
+      quietly do
+        `bin/rails g scaffold User name:string age:integer;
+        bin/rails db:migrate`
+      end
+
+      assert_file "bukkits-admin/app/controllers/bukkits/admin/users_controller.rb" do |content|
+        assert_match(/module Bukkits::Admin/, content)
+        assert_match(/class UsersController < ApplicationController/, content)
+      end
+
+      assert_match(/8 runs, 10 assertions, 0 failures, 0 errors/, `bin/rails test 2>&1`)
     end
   end
 
@@ -500,9 +525,92 @@ class ScaffoldGeneratorTest < Rails::Generators::TestCase
     Dir.chdir(engine_path) do
       quietly do
         `bin/rails g scaffold User name:string age:integer;
-        bundle exec rake db:migrate`
+        bin/rails db:migrate`
       end
-      assert_match(/8 runs, 13 assertions, 0 failures, 0 errors/, `bundle exec rake test 2>&1`)
+      assert_match(/8 runs, 10 assertions, 0 failures, 0 errors/, `bin/rails test 2>&1`)
+    end
+  end
+
+  def test_scaffold_tests_pass_by_default_inside_api_mountable_engine
+    Dir.chdir(destination_root) { `bundle exec rails plugin new bukkits --mountable --api` }
+
+    engine_path = File.join(destination_root, "bukkits")
+
+    Dir.chdir(engine_path) do
+      quietly do
+        `bin/rails g scaffold User name:string age:integer;
+        bin/rails db:migrate`
+      end
+      assert_match(/6 runs, 8 assertions, 0 failures, 0 errors/, `bin/rails test 2>&1`)
+    end
+  end
+
+  def test_scaffold_tests_pass_by_default_inside_api_full_engine
+    Dir.chdir(destination_root) { `bundle exec rails plugin new bukkits --full --api` }
+
+    engine_path = File.join(destination_root, "bukkits")
+
+    Dir.chdir(engine_path) do
+      quietly do
+        `bin/rails g scaffold User name:string age:integer;
+        bin/rails db:migrate`
+      end
+      assert_match(/6 runs, 8 assertions, 0 failures, 0 errors/, `bin/rails test 2>&1`)
+    end
+  end
+
+  def test_scaffold_on_invoke_inside_mountable_engine
+    Dir.chdir(destination_root) { `bundle exec rails plugin new bukkits --mountable` }
+    engine_path = File.join(destination_root, "bukkits")
+
+    Dir.chdir(engine_path) do
+      quietly { `bin/rails generate scaffold User name:string age:integer` }
+
+      assert File.exist?("app/models/bukkits/user.rb")
+      assert File.exist?("test/models/bukkits/user_test.rb")
+      assert File.exist?("test/fixtures/bukkits/users.yml")
+
+      assert File.exist?("app/controllers/bukkits/users_controller.rb")
+      assert File.exist?("test/controllers/bukkits/users_controller_test.rb")
+
+      assert File.exist?("app/views/bukkits/users/index.html.erb")
+      assert File.exist?("app/views/bukkits/users/edit.html.erb")
+      assert File.exist?("app/views/bukkits/users/show.html.erb")
+      assert File.exist?("app/views/bukkits/users/new.html.erb")
+      assert File.exist?("app/views/bukkits/users/_form.html.erb")
+
+      assert File.exist?("app/helpers/bukkits/users_helper.rb")
+
+      assert File.exist?("app/assets/javascripts/bukkits/users.js")
+      assert File.exist?("app/assets/stylesheets/bukkits/users.css")
+    end
+  end
+
+  def test_scaffold_on_revoke_inside_mountable_engine
+    Dir.chdir(destination_root) { `bundle exec rails plugin new bukkits --mountable` }
+    engine_path = File.join(destination_root, "bukkits")
+
+    Dir.chdir(engine_path) do
+      quietly { `bin/rails generate scaffold User name:string age:integer` }
+      quietly { `bin/rails destroy scaffold User` }
+
+      assert_not File.exist?("app/models/bukkits/user.rb")
+      assert_not File.exist?("test/models/bukkits/user_test.rb")
+      assert_not File.exist?("test/fixtures/bukkits/users.yml")
+
+      assert_not File.exist?("app/controllers/bukkits/users_controller.rb")
+      assert_not File.exist?("test/controllers/bukkits/users_controller_test.rb")
+
+      assert_not File.exist?("app/views/bukkits/users/index.html.erb")
+      assert_not File.exist?("app/views/bukkits/users/edit.html.erb")
+      assert_not File.exist?("app/views/bukkits/users/show.html.erb")
+      assert_not File.exist?("app/views/bukkits/users/new.html.erb")
+      assert_not File.exist?("app/views/bukkits/users/_form.html.erb")
+
+      assert_not File.exist?("app/helpers/bukkits/users_helper.rb")
+
+      assert_not File.exist?("app/assets/javascripts/bukkits/users.js")
+      assert_not File.exist?("app/assets/stylesheets/bukkits/users.css")
     end
   end
 end

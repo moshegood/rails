@@ -1,8 +1,8 @@
-require 'active_job'
+require "active_job"
 
 module ActionMailer
   # Provides helper methods for testing Action Mailer, including #assert_emails
-  # and #assert_no_emails
+  # and #assert_no_emails.
   module TestHelper
     include ActiveJob::TestHelper
 
@@ -40,7 +40,7 @@ module ActionMailer
       end
     end
 
-    # Assert that no emails have been sent.
+    # Asserts that no emails have been sent.
     #
     #   def test_emails
     #     assert_no_emails
@@ -88,7 +88,7 @@ module ActionMailer
     #     end
     #   end
     def assert_enqueued_emails(number, &block)
-      assert_enqueued_jobs number, only: ActionMailer::DeliveryJob, &block
+      assert_enqueued_jobs number, only: [ ActionMailer::DeliveryJob, ActionMailer::Parameterized::DeliveryJob ], &block
     end
 
     # Asserts that no emails are enqueued for later delivery.
@@ -107,7 +107,7 @@ module ActionMailer
     #     end
     #   end
     def assert_no_enqueued_emails(&block)
-      assert_no_enqueued_jobs only: ActionMailer::DeliveryJob, &block
+      assert_no_enqueued_jobs only: [ ActionMailer::DeliveryJob, ActionMailer::Parameterized::DeliveryJob ], &block
     end
   end
 end

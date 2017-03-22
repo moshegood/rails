@@ -1,32 +1,30 @@
-require 'active_record/attribute'
+require "active_record/attribute"
 
 module ActiveRecord
   class Attribute # :nodoc:
-    class UserProvidedDefault < FromUser
+    class UserProvidedDefault < FromUser # :nodoc:
       def initialize(name, value, type, database_default)
-        super(name, value, type)
-        @database_default = database_default
+        @user_provided_value = value
+        super(name, value, type, database_default)
       end
 
-      def type_cast(value)
-        if value.is_a?(Proc)
-          super(value.call)
+      def value_before_type_cast
+        if user_provided_value.is_a?(Proc)
+          @memoized_value_before_type_cast ||= user_provided_value.call
         else
-          super
+          @user_provided_value
         end
       end
 
-      def changed_in_place_from?(old_value)
-        super || changed_from?(database_default.value)
-      end
-
       def with_type(type)
-        self.class.new(name, value_before_type_cast, type, database_default)
+        self.class.new(name, user_provided_value, type, original_attribute)
       end
 
+      # TODO Change this to private once we've dropped Ruby 2.2 support.
+      # Workaround for Ruby 2.2 "private attribute?" warning.
       protected
 
-      attr_reader :database_default
+        attr_reader :user_provided_value
     end
   end
 end

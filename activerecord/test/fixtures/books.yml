@@ -9,6 +9,7 @@ awdr:
   author_visibility: :visible
   illustrator_visibility: :visible
   font_size: :medium
+  difficulty: :medium
 
 rfr:
   author_id: 1
@@ -24,3 +25,8 @@ ddd:
   name: "Domain-Driven Design"
   format: "hardcover"
   status: 2
+
+tlg:
+  author_id: 1
+  id: 4
+  name: "Thoughtleadering"

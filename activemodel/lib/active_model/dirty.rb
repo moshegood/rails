@@ -1,5 +1,5 @@
-require 'active_support/hash_with_indifferent_access'
-require 'active_support/core_ext/object/duplicable'
+require "active_support/hash_with_indifferent_access"
+require "active_support/core_ext/object/duplicable"
 
 module ActiveModel
   # == Active \Model \Dirty
@@ -25,6 +25,10 @@ module ActiveModel
   #     include ActiveModel::Dirty
   #
   #     define_attribute_methods :name
+  #
+  #     def initialize
+  #       @name = nil
+  #     end
   #
   #     def name
   #       @name
@@ -62,11 +66,11 @@ module ActiveModel
   #   person.name = 'Bob'
   #   person.changed?       # => true
   #   person.name_changed?  # => true
-  #   person.name_changed?(from: "Uncle Bob", to: "Bob") # => true
-  #   person.name_was       # => "Uncle Bob"
-  #   person.name_change    # => ["Uncle Bob", "Bob"]
+  #   person.name_changed?(from: nil, to: "Bob") # => true
+  #   person.name_was       # => nil
+  #   person.name_change    # => [nil, "Bob"]
   #   person.name = 'Bill'
-  #   person.name_change    # => ["Uncle Bob", "Bill"]
+  #   person.name_change    # => [nil, "Bill"]
   #
   # Save the changes:
   #
@@ -76,9 +80,9 @@ module ActiveModel
   #
   # Reset the changes:
   #
-  #   person.previous_changes         # => {"name" => ["Uncle Bob", "Bill"]}
+  #   person.previous_changes         # => {"name" => [nil, "Bill"]}
   #   person.name_previously_changed? # => true
-  #   person.name_previous_change     # => ["Uncle Bob", "Bill"]
+  #   person.name_previous_change     # => [nil, "Bill"]
   #   person.reload!
   #   person.previous_changes         # => {}
   #
@@ -115,10 +119,13 @@ module ActiveModel
     extend ActiveSupport::Concern
     include ActiveModel::AttributeMethods
 
+    OPTION_NOT_GIVEN = Object.new # :nodoc:
+    private_constant :OPTION_NOT_GIVEN
+
     included do
-      attribute_method_suffix '_changed?', '_change', '_will_change!', '_was'
-      attribute_method_suffix '_previously_changed?', '_previous_change'
-      attribute_method_affix prefix: 'restore_', suffix: '!'
+      attribute_method_suffix "_changed?", "_change", "_will_change!", "_was"
+      attribute_method_suffix "_previously_changed?", "_previous_change"
+      attribute_method_affix prefix: "restore_", suffix: "!"
     end
 
     # Returns +true+ if any of the attributes have unsaved changes, +false+ otherwise.
@@ -170,11 +177,10 @@ module ActiveModel
     end
 
     # Handles <tt>*_changed?</tt> for +method_missing+.
-    def attribute_changed?(attr, options = {}) #:nodoc:
-      result = changes_include?(attr)
-      result &&= options[:to] == __send__(attr) if options.key?(:to)
-      result &&= options[:from] == changed_attributes[attr] if options.key?(:from)
-      result
+    def attribute_changed?(attr, from: OPTION_NOT_GIVEN, to: OPTION_NOT_GIVEN) # :nodoc:
+      !!changes_include?(attr) &&
+        (to == OPTION_NOT_GIVEN || to == __send__(attr)) &&
+        (from == OPTION_NOT_GIVEN || from == changed_attributes[attr])
     end
 
     # Handles <tt>*_was</tt> for +method_missing+.
@@ -183,7 +189,7 @@ module ActiveModel
     end
 
     # Handles <tt>*_previously_changed?</tt> for +method_missing+.
-    def attribute_previously_changed?(attr, options = {}) #:nodoc:
+    def attribute_previously_changed?(attr) #:nodoc:
       previous_changes_include?(attr)
     end
 
@@ -203,7 +209,7 @@ module ActiveModel
       # Returns +true+ if attr_name were changed before the model was saved,
       # +false+ otherwise.
       def previous_changes_include?(attr_name)
-        @previously_changed.include?(attr_name)
+        previous_changes.include?(attr_name)
       end
 
       # Removes current changes and makes them accessible through +previous_changes+.
@@ -225,7 +231,7 @@ module ActiveModel
 
       # Handles <tt>*_previous_change</tt> for +method_missing+.
       def attribute_previous_change(attr)
-        @previously_changed[attr] if attribute_previously_changed?(attr)
+        previous_changes[attr] if attribute_previously_changed?(attr)
       end
 
       # Handles <tt>*_will_change!</tt> for +method_missing+.

@@ -1,9 +1,8 @@
-require 'active_support/core_ext/array/extract_options'
-require 'active_support/core_ext/hash/keys'
-require 'active_support/core_ext/hash/except'
+require "active_support/core_ext/array/extract_options"
+require "active_support/core_ext/hash/keys"
+require "active_support/core_ext/hash/except"
 
 module ActiveModel
-
   # == Active \Model \Validations
   #
   # Provides a full validation framework to your objects.
@@ -47,10 +46,11 @@ module ActiveModel
       include HelperMethods
 
       attr_accessor :validation_context
+      private :validation_context=
       define_callbacks :validate, scope: :name
 
-      class_attribute :_validators
-      self._validators = Hash.new { |h,k| h[k] = [] }
+      class_attribute :_validators, instance_writer: false
+      self._validators = Hash.new { |h, k| h[k] = [] }
     end
 
     module ClassMethods
@@ -68,7 +68,7 @@ module ActiveModel
       #
       # Options:
       # * <tt>:on</tt> - Specifies the contexts where this validation is active.
-      #   Runs in all validation contexts by default (nil). You can pass a symbol
+      #   Runs in all validation contexts by default +nil+. You can pass a symbol
       #   or an array of symbols. (e.g. <tt>on: :create</tt> or
       #   <tt>on: :custom_validation_context</tt> or
       #   <tt>on: [:create, :custom_validation_context]</tt>)
@@ -87,8 +87,7 @@ module ActiveModel
         validates_with BlockValidator, _merge_attributes(attr_names), &block
       end
 
-      # :nodoc:
-      VALID_OPTIONS_FOR_VALIDATE = [:on, :if, :unless, :prepend].freeze
+      VALID_OPTIONS_FOR_VALIDATE = [:on, :if, :unless, :prepend].freeze # :nodoc:
 
       # Adds a validation method or block to the class. This is useful when
       # overriding the +validate+ instance method becomes too unwieldy and
@@ -130,9 +129,12 @@ module ActiveModel
       #     end
       #   end
       #
+      # Note that the return value of validation methods is not relevant.
+      # It's not possible to halt the validate callback chain.
+      #
       # Options:
       # * <tt>:on</tt> - Specifies the contexts where this validation is active.
-      #   Runs in all validation contexts by default (nil). You can pass a symbol
+      #   Runs in all validation contexts by default +nil+. You can pass a symbol
       #   or an array of symbols. (e.g. <tt>on: :create</tt> or
       #   <tt>on: :custom_validation_context</tt> or
       #   <tt>on: [:create, :custom_validation_context]</tt>)
@@ -160,7 +162,7 @@ module ActiveModel
           options = options.dup
           options[:if] = Array(options[:if])
           options[:if].unshift ->(o) {
-            Array(options[:on]).include?(o.validation_context)
+            !(Array(options[:on]) & Array(o.validation_context)).empty?
           }
         end
 
@@ -301,8 +303,6 @@ module ActiveModel
     # Runs all the specified validations and returns +true+ if no errors were
     # added otherwise +false+.
     #
-    # Aliased as validate.
-    #
     #   class Person
     #     include ActiveModel::Validations
     #
@@ -399,14 +399,14 @@ module ActiveModel
     #   end
     alias :read_attribute_for_validation :send
 
-  protected
+  private
 
-    def run_validations! #:nodoc:
-      run_callbacks :validate
+    def run_validations!
+      _run_validate_callbacks
       errors.empty?
     end
 
-    def raise_validation_error
+    def raise_validation_error # :doc:
       raise(ValidationError.new(self))
     end
   end

@@ -1,10 +1,10 @@
-require 'fileutils'
-require 'yaml'
-require 'active_support/core_ext/hash/keys'
-require 'active_support/core_ext/object/blank'
-require 'active_support/key_generator'
-require 'active_support/message_verifier'
-require 'rails/engine'
+require "yaml"
+require "active_support/core_ext/hash/keys"
+require "active_support/core_ext/object/blank"
+require "active_support/key_generator"
+require "active_support/message_verifier"
+require "rails/engine"
+require "rails/secrets"
 
 module Rails
   # An Engine with the responsibility of coordinating the whole boot process.
@@ -73,22 +73,22 @@ module Rails
   # on one of the applications to create a copy of the application which shares
   # the configuration.
   #
-  # If you decide to define rake tasks, runners, or initializers in an
-  # application other than +Rails.application+, then you must run those
-  # these manually.
+  # If you decide to define Rake tasks, runners, or initializers in an
+  # application other than +Rails.application+, then you must run them manually.
   class Application < Engine
-    autoload :Bootstrap,              'rails/application/bootstrap'
-    autoload :Configuration,          'rails/application/configuration'
-    autoload :DefaultMiddlewareStack, 'rails/application/default_middleware_stack'
-    autoload :Finisher,               'rails/application/finisher'
-    autoload :Railties,               'rails/engine/railties'
-    autoload :RoutesReloader,         'rails/application/routes_reloader'
+    autoload :Bootstrap,              "rails/application/bootstrap"
+    autoload :Configuration,          "rails/application/configuration"
+    autoload :DefaultMiddlewareStack, "rails/application/default_middleware_stack"
+    autoload :Finisher,               "rails/application/finisher"
+    autoload :Railties,               "rails/engine/railties"
+    autoload :RoutesReloader,         "rails/application/routes_reloader"
 
     class << self
       def inherited(base)
         super
         Rails.app_class = base
         add_lib_to_load_path!(find_root(base.called_from))
+        ActiveSupport.run_load_hooks(:before_configuration, base)
       end
 
       def instance
@@ -113,7 +113,7 @@ module Rails
 
     attr_accessor :assets, :sandbox
     alias_method :sandbox?, :sandbox
-    attr_reader :reloaders
+    attr_reader :reloaders, :reloader, :executor
 
     delegate :default_url_options, :default_url_options=, to: :routes
 
@@ -131,6 +131,10 @@ module Rails
       @message_verifiers = {}
       @ran_load_hooks    = false
 
+      @executor          = Class.new(ActiveSupport::Executor)
+      @reloader          = Class.new(ActiveSupport::Reloader)
+      @reloader.executor = @executor
+
       # are these actually used?
       @initial_variable_values = initial_variable_values
       @block = block
@@ -144,7 +148,6 @@ module Rails
     def run_load_hooks! # :nodoc:
       return self if @ran_load_hooks
       @ran_load_hooks = true
-      ActiveSupport.run_load_hooks(:before_configuration, self)
 
       @initial_variable_values.each do |variable_name, value|
         if INITIAL_VARIABLES.include?(variable_name)
@@ -156,26 +159,20 @@ module Rails
       self
     end
 
-    # Implements call according to the Rack API. It simply
-    # dispatches the request to the underlying middleware stack.
-    def call(env)
-      req = ActionDispatch::Request.new env
-      env["ORIGINAL_FULLPATH"] = req.fullpath
-      env["ORIGINAL_SCRIPT_NAME"] = req.script_name
-      super(env)
-    end
-
     # Reload application routes regardless if they changed or not.
     def reload_routes!
       routes_reloader.reload!
     end
 
-    # Return the application's KeyGenerator
+    # Returns the application's KeyGenerator
     def key_generator
       # number of iterations selected based on consultation with the google security
       # team. Details at https://github.com/rails/rails/pull/6952#issuecomment-7661220
       @caching_key_generator ||=
         if secrets.secret_key_base
+          unless secrets.secret_key_base.kind_of?(String)
+            raise ArgumentError, "`secret_key_base` for #{Rails.env} environment must be a type of String, change this value in `config/secrets.yml`"
+          end
           key_generator = ActiveSupport::KeyGenerator.new(secrets.secret_key_base, iterations: 1000)
           ActiveSupport::CachingKeyGenerator.new(key_generator)
         else
@@ -220,16 +217,20 @@ module Rails
     #       url: http://localhost:3001
     #       namespace: my_app_development
     #
-    #     # config/production.rb
+    #     # config/environments/production.rb
     #     Rails.application.configure do
     #       config.middleware.use ExceptionNotifier, config_for(:exception_notification)
     #     end
-    def config_for(name)
-      yaml = Pathname.new("#{paths["config"].existent.first}/#{name}.yml")
+    def config_for(name, env: Rails.env)
+      if name.is_a?(Pathname)
+        yaml = name
+      else
+        yaml = Pathname.new("#{paths["config"].existent.first}/#{name}.yml")
+      end
 
       if yaml.exist?
         require "erb"
-        (YAML.load(ERB.new(yaml.read).result) || {})[Rails.env] || {}
+        (YAML.load(ERB.new(yaml.read).result) || {})[env] || {}
       else
         raise "Could not load configuration. No such file - #{yaml}"
       end
@@ -245,7 +246,7 @@ module Rails
       @app_env_config ||= begin
         validate_secret_key_config!
 
-        super.merge({
+        super.merge(
           "action_dispatch.parameter_filter" => config.filter_parameters,
           "action_dispatch.redirect_filter" => config.filter_redirect,
           "action_dispatch.secret_token" => secrets.secret_token,
@@ -261,12 +262,12 @@ module Rails
           "action_dispatch.encrypted_signed_cookie_salt" => config.action_dispatch.encrypted_signed_cookie_salt,
           "action_dispatch.cookies_serializer" => config.action_dispatch.cookies_serializer,
           "action_dispatch.cookies_digest" => config.action_dispatch.cookies_digest
-        })
+        )
       end
     end
 
-    # If you try to define a set of rake tasks on the instance, these will get
-    # passed up to the rake tasks defined on the application's class.
+    # If you try to define a set of Rake tasks on the instance, these will get
+    # passed up to the Rake tasks defined on the application's class.
     def rake_tasks(&block)
       self.class.rake_tasks(&block)
     end
@@ -274,7 +275,7 @@ module Rails
     # Sends the initializers to the +initializer+ method defined in the
     # Rails::Initializable module. Each Rails::Application class has its own
     # set of initializers, as defined by the Initializable module.
-    def initializer(name, opts={}, &block)
+    def initializer(name, opts = {}, &block)
       self.class.initializer(name, opts, &block)
     end
 
@@ -317,7 +318,7 @@ module Rails
     # Rails application, you will need to add lib to $LOAD_PATH on your own in case
     # you need to load files in lib/ during the application configuration as well.
     def self.add_lib_to_load_path!(root) #:nodoc:
-      path = File.join root, 'lib'
+      path = File.join root, "lib"
       if File.exist?(path) && !$LOAD_PATH.include?(path)
         $LOAD_PATH.unshift(path)
       end
@@ -347,7 +348,7 @@ module Rails
 
     # Initialize the application passing the given group. By default, the
     # group is :default
-    def initialize!(group=:default) #:nodoc:
+    def initialize!(group = :default) #:nodoc:
       raise "Application has been already initialized." if @initialized
       run_initializers(group, self)
       @initialized = true
@@ -385,13 +386,7 @@ module Rails
     def secrets
       @secrets ||= begin
         secrets = ActiveSupport::OrderedOptions.new
-        yaml = config.paths["config/secrets"].first
-        if File.exist?(yaml)
-          require "erb"
-          all_secrets = YAML.load(ERB.new(IO.read(yaml)).result) || {}
-          env_secrets = all_secrets[Rails.env]
-          secrets.merge!(env_secrets.symbolize_keys) if env_secrets
-        end
+        secrets.merge! Rails::Secrets.parse(config.paths["config/secrets"].existent, env: Rails.env)
 
         # Fallback to config.secret_key_base if secrets.secret_key_base isn't set
         secrets.secret_key_base ||= config.secret_key_base
@@ -506,7 +501,7 @@ module Rails
 
     def validate_secret_key_config! #:nodoc:
       if secrets.secret_key_base.blank?
-        ActiveSupport::Deprecation.warn "You didn't set `secret_key_base`. " +
+        ActiveSupport::Deprecation.warn "You didn't set `secret_key_base`. " \
           "Read the upgrade documentation to learn more about this new config option."
 
         if secrets.secret_token.blank?
@@ -514,5 +509,18 @@ module Rails
         end
       end
     end
+
+    private
+
+      def build_request(env)
+        req = super
+        env["ORIGINAL_FULLPATH"] = req.fullpath
+        env["ORIGINAL_SCRIPT_NAME"] = req.script_name
+        req
+      end
+
+      def build_middleware
+        config.app_middleware + super
+      end
   end
 end

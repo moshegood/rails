@@ -20,3 +20,10 @@
 !/log/.keep
 !/tmp/.keep
 <% end -%>
+
+<% unless options[:skip_yarn] -%>
+/node_modules
+/yarn-error.log
+
+<% end -%>
+.byebug_history

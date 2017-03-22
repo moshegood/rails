@@ -1,7 +1,7 @@
-require 'active_support/ordered_options'
-require 'active_support/core_ext/object'
-require 'rails/paths'
-require 'rails/rack'
+require "active_support/ordered_options"
+require "active_support/core_ext/object"
+require "rails/paths"
+require "rails/rack"
 
 module Rails
   module Configuration
@@ -33,9 +33,9 @@ module Rails
     #     config.middleware.delete ActionDispatch::Flash
     #
     class MiddlewareStackProxy
-      def initialize
-        @operations = []
-        @delete_operations = []
+      def initialize(operations = [], delete_operations = [])
+        @operations = operations
+        @delete_operations = delete_operations
       end
 
       def insert_before(*args, &block)
@@ -71,6 +71,19 @@ module Rails
 
         other
       end
+
+      def +(other) # :nodoc:
+        MiddlewareStackProxy.new(@operations + other.operations, @delete_operations + other.delete_operations)
+      end
+
+      protected
+        def operations
+          @operations
+        end
+
+        def delete_operations
+          @delete_operations
+        end
     end
 
     class Generators #:nodoc:
@@ -78,8 +91,8 @@ module Rails
       attr_reader :hidden_namespaces
 
       def initialize
-        @aliases = Hash.new { |h,k| h[k] = {} }
-        @options = Hash.new { |h,k| h[k] = {} }
+        @aliases = Hash.new { |h, k| h[k] = {} }
+        @options = Hash.new { |h, k| h[k] = {} }
         @fallbacks = {}
         @templates = []
         @colorize_logging = true
@@ -99,7 +112,7 @@ module Rails
       end
 
       def method_missing(method, *args)
-        method = method.to_s.sub(/=$/, '').to_sym
+        method = method.to_s.sub(/=$/, "").to_sym
 
         return @options[method] if args.empty?
 

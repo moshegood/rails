@@ -1,7 +1,6 @@
-require 'generators/generators_test_helper'
-require 'rails/generators/rails/model/model_generator'
-require 'rails/generators/test_unit/model/model_generator'
-require 'minitest/mock'
+require "generators/generators_test_helper"
+require "rails/generators/rails/model/model_generator"
+require "rails/generators/test_unit/model/model_generator"
 
 class GeneratorsTest < Rails::Generators::TestCase
   include GeneratorsTestHelper
@@ -9,65 +8,59 @@ class GeneratorsTest < Rails::Generators::TestCase
   def setup
     @path = File.expand_path("lib", Rails.root)
     $LOAD_PATH.unshift(@path)
-    @mock_generator = MiniTest::Mock.new
   end
 
   def teardown
     $LOAD_PATH.delete(@path)
-    @mock_generator.verify
   end
 
   def test_simple_invoke
-    assert File.exist?(File.join(@path, 'generators', 'model_generator.rb'))
-    @mock_generator.expect(:call, nil, [["Account"],{}])
-    TestUnit::Generators::ModelGenerator.stub(:start, @mock_generator) do
+    assert File.exist?(File.join(@path, "generators", "model_generator.rb"))
+    assert_called_with(TestUnit::Generators::ModelGenerator, :start, [["Account"], {}]) do
       Rails::Generators.invoke("test_unit:model", ["Account"])
     end
   end
 
   def test_invoke_when_generator_is_not_found
     name = :unknown
-    output = capture(:stdout){ Rails::Generators.invoke name }
+    output = capture(:stdout) { Rails::Generators.invoke name }
     assert_match "Could not find generator '#{name}'", output
     assert_match "`rails generate --help`", output
   end
 
   def test_generator_suggestions
     name = :migrationz
-    output = capture(:stdout){ Rails::Generators.invoke name }
+    output = capture(:stdout) { Rails::Generators.invoke name }
     assert_match "Maybe you meant 'migration'", output
   end
 
   def test_generator_multiple_suggestions
     name = :tas
-    output = capture(:stdout){ Rails::Generators.invoke name }
+    output = capture(:stdout) { Rails::Generators.invoke name }
     assert_match "Maybe you meant 'task', 'job' or", output
   end
 
   def test_help_when_a_generator_with_required_arguments_is_invoked_without_arguments
-    output = capture(:stdout){ Rails::Generators.invoke :model, [] }
+    output = capture(:stdout) { Rails::Generators.invoke :model, [] }
     assert_match(/Description:/, output)
   end
 
   def test_should_give_higher_preference_to_rails_generators
-    assert File.exist?(File.join(@path, 'generators', 'model_generator.rb'))
-    @mock_generator.expect(:call, nil, [["Account"],{}])
-    Rails::Generators::ModelGenerator.stub(:start, @mock_generator) do
-      warnings = capture(:stderr){ Rails::Generators.invoke :model, ["Account"] }
+    assert File.exist?(File.join(@path, "generators", "model_generator.rb"))
+    assert_called_with(Rails::Generators::ModelGenerator, :start, [["Account"], {}]) do
+      warnings = capture(:stderr) { Rails::Generators.invoke :model, ["Account"] }
       assert warnings.empty?
     end
   end
 
   def test_invoke_with_default_values
-    @mock_generator.expect(:call, nil, [["Account"],{}])
-    Rails::Generators::ModelGenerator.stub(:start, @mock_generator) do
+    assert_called_with(Rails::Generators::ModelGenerator, :start, [["Account"], {}]) do
       Rails::Generators.invoke :model, ["Account"]
     end
   end
 
   def test_invoke_with_config_values
-    @mock_generator.expect(:call, nil, [["Account"],{behavior: :skip}])
-    Rails::Generators::ModelGenerator.stub(:start, @mock_generator) do
+    assert_called_with(Rails::Generators::ModelGenerator, :start, [["Account"], behavior: :skip]) do
       Rails::Generators.invoke :model, ["Account"], behavior: :skip
     end
   end
@@ -115,15 +108,14 @@ class GeneratorsTest < Rails::Generators::TestCase
   def test_invoke_with_nested_namespaces
     model_generator = Minitest::Mock.new
     model_generator.expect(:start, nil, [["Account"], {}])
-    @mock_generator.expect(:call, model_generator, ['namespace', 'my:awesome'])
-    Rails::Generators.stub(:find_by_namespace, @mock_generator) do
-      Rails::Generators.invoke 'my:awesome:namespace', ["Account"]
+    assert_called_with(Rails::Generators, :find_by_namespace, ["namespace", "my:awesome"], returns: model_generator) do
+      Rails::Generators.invoke "my:awesome:namespace", ["Account"]
     end
     model_generator.verify
   end
 
   def test_rails_generators_help_with_builtin_information
-    output = capture(:stdout){ Rails::Generators.help }
+    output = capture(:stdout) { Rails::Generators.help }
     assert_match(/Rails:/, output)
     assert_match(/^  model$/, output)
     assert_match(/^  scaffold_controller$/, output)
@@ -131,19 +123,19 @@ class GeneratorsTest < Rails::Generators::TestCase
   end
 
   def test_rails_generators_help_does_not_include_app_nor_plugin_new
-    output = capture(:stdout){ Rails::Generators.help }
+    output = capture(:stdout) { Rails::Generators.help }
     assert_no_match(/app/, output)
     assert_no_match(/[^:]plugin/, output)
   end
 
   def test_rails_generators_with_others_information
-    output = capture(:stdout){ Rails::Generators.help }
+    output = capture(:stdout) { Rails::Generators.help }
     assert_match(/Fixjour:/, output)
     assert_match(/^  fixjour$/, output)
   end
 
   def test_rails_generators_does_not_show_active_record_hooks
-    output = capture(:stdout){ Rails::Generators.help }
+    output = capture(:stdout) { Rails::Generators.help }
     assert_match(/ActiveRecord:/, output)
     assert_match(/^  active_record:fixjour$/, output)
   end
@@ -185,8 +177,7 @@ class GeneratorsTest < Rails::Generators::TestCase
 
   def test_fallbacks_for_generators_on_invoke
     Rails::Generators.fallbacks[:shoulda] = :test_unit
-    @mock_generator.expect(:call, nil, [["Account"],{}])
-    TestUnit::Generators::ModelGenerator.stub(:start, @mock_generator) do
+    assert_called_with(TestUnit::Generators::ModelGenerator, :start, [["Account"], {}]) do
       Rails::Generators.invoke "shoulda:model", ["Account"]
     end
   ensure
@@ -196,8 +187,7 @@ class GeneratorsTest < Rails::Generators::TestCase
   def test_nested_fallbacks_for_generators
     Rails::Generators.fallbacks[:shoulda] = :test_unit
     Rails::Generators.fallbacks[:super_shoulda] = :shoulda
-    @mock_generator.expect(:call, nil, [["Account"],{}])
-    TestUnit::Generators::ModelGenerator.stub(:start, @mock_generator) do
+    assert_called_with(TestUnit::Generators::ModelGenerator, :start, [["Account"], {}]) do
       Rails::Generators.invoke "super_shoulda:model", ["Account"]
     end
   ensure
@@ -210,7 +200,7 @@ class GeneratorsTest < Rails::Generators::TestCase
 
     self.class.class_eval(<<-end_eval, __FILE__, __LINE__ + 1)
       class WithOptionsGenerator < Rails::Generators::Base
-        class_option :generate, :default => true
+        class_option :generate, default: true, type: :boolean
       end
     end_eval
 
@@ -224,7 +214,7 @@ class GeneratorsTest < Rails::Generators::TestCase
 
     # Create template
     mkdir_p(File.dirname(template))
-    File.open(template, 'w'){ |f| f.write "empty" }
+    File.open(template, "w") { |f| f.write "empty" }
 
     capture(:stdout) do
       Rails::Generators.invoke :model, ["user"], destination_root: destination_root
@@ -239,18 +229,18 @@ class GeneratorsTest < Rails::Generators::TestCase
 
   def test_source_paths_for_not_namespaced_generators
     mspec = Rails::Generators.find_by_namespace :fixjour
-    assert mspec.source_paths.include?(File.join(Rails.root, "lib", "templates", "fixjour"))
+    assert_includes mspec.source_paths, File.join(Rails.root, "lib", "templates", "fixjour")
   end
 
   def test_usage_with_embedded_ruby
     require File.expand_path("fixtures/lib/generators/usage_template/usage_template_generator", File.dirname(__FILE__))
-    output = capture(:stdout) { Rails::Generators.invoke :usage_template, ['--help'] }
+    output = capture(:stdout) { Rails::Generators.invoke :usage_template, ["--help"] }
     assert_match(/:: 2 ::/, output)
   end
 
   def test_hide_namespace
-    assert !Rails::Generators.hidden_namespaces.include?("special:namespace")
+    assert_not_includes Rails::Generators.hidden_namespaces, "special:namespace"
     Rails::Generators.hide_namespace("special:namespace")
-    assert Rails::Generators.hidden_namespaces.include?("special:namespace")
+    assert_includes Rails::Generators.hidden_namespaces, "special:namespace"
   end
 end

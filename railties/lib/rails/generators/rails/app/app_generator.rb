@@ -1,4 +1,4 @@
-require 'rails/generators/app_base'
+require "rails/generators/app_base"
 
 module Rails
   module ActionMethods # :nodoc:
@@ -32,6 +32,14 @@ module Rails
   # This allows you to override entire operations, like the creation of the
   # Gemfile, README, or JavaScript files, without needing to know exactly
   # what those operations do so you can create another template action.
+  #
+  #  class CustomAppBuilder < Rails::AppBuilder
+  #    def test
+  #      @generator.gem "rspec-rails", group: [:development, :test]
+  #      run "bundle install"
+  #      generate "rspec:install"
+  #    end
+  #  end
   class AppBuilder
     def rakefile
       template "Rakefile"
@@ -53,15 +61,20 @@ module Rails
       template "gitignore", ".gitignore"
     end
 
+    def version_control
+      if !options[:skip_git] && !options[:pretend]
+        run "git init"
+      end
+    end
+
     def app
-      directory 'app'
+      directory "app"
 
-      keep_file  'app/assets/images'
-      keep_file  'app/mailers'
-      keep_file  'app/models'
+      keep_file "app/assets/images"
+      empty_directory_with_keep_file "app/assets/javascripts/channels" unless options[:skip_action_cable]
 
-      keep_file  'app/controllers/concerns'
-      keep_file  'app/models/concerns'
+      keep_file  "app/controllers/concerns"
+      keep_file  "app/models/concerns"
     end
 
     def bin
@@ -79,6 +92,9 @@ module Rails
         template "application.rb"
         template "environment.rb"
         template "secrets.yml"
+        template "cable.yml" unless options[:skip_action_cable]
+        template "puma.rb"   unless options[:skip_puma]
+        template "spring.rb" if spring_install?
 
         directory "environments"
         directory "initializers"
@@ -87,22 +103,24 @@ module Rails
     end
 
     def config_when_updating
-      cookie_serializer_config_exist = File.exist?('config/initializers/cookies_serializer.rb')
-      callback_terminator_config_exist = File.exist?('config/initializers/callback_terminator.rb')
-      active_record_belongs_to_required_by_default_config_exist = File.exist?('config/initializers/active_record_belongs_to_required_by_default.rb')
+      cookie_serializer_config_exist = File.exist?("config/initializers/cookies_serializer.rb")
+      action_cable_config_exist = File.exist?("config/cable.yml")
+      rack_cors_config_exist = File.exist?("config/initializers/cors.rb")
 
       config
 
-      unless callback_terminator_config_exist
-        remove_file 'config/initializers/callback_terminator.rb'
-      end
+      gsub_file "config/environments/development.rb", /^(\s+)config\.file_watcher/, '\1# config.file_watcher'
 
       unless cookie_serializer_config_exist
-        gsub_file 'config/initializers/cookies_serializer.rb', /json/, 'marshal'
+        gsub_file "config/initializers/cookies_serializer.rb", /json(?!,)/, "marshal"
       end
 
-      unless active_record_belongs_to_required_by_default_config_exist
-        remove_file 'config/initializers/active_record_belongs_to_required_by_default.rb'
+      unless action_cable_config_exist
+        template "config/cable.yml"
+      end
+
+      unless rack_cors_config_exist
+        remove_file "config/initializers/cors.rb"
       end
     end
 
@@ -115,13 +133,13 @@ module Rails
     end
 
     def lib
-      empty_directory 'lib'
-      empty_directory_with_keep_file 'lib/tasks'
-      empty_directory_with_keep_file 'lib/assets'
+      empty_directory "lib"
+      empty_directory_with_keep_file "lib/tasks"
+      empty_directory_with_keep_file "lib/assets"
     end
 
     def log
-      empty_directory_with_keep_file 'log'
+      empty_directory_with_keep_file "log"
     end
 
     def public_directory
@@ -129,15 +147,21 @@ module Rails
     end
 
     def test
-      empty_directory_with_keep_file 'test/fixtures'
-      empty_directory_with_keep_file 'test/fixtures/files'
-      empty_directory_with_keep_file 'test/controllers'
-      empty_directory_with_keep_file 'test/mailers'
-      empty_directory_with_keep_file 'test/models'
-      empty_directory_with_keep_file 'test/helpers'
-      empty_directory_with_keep_file 'test/integration'
+      empty_directory_with_keep_file "test/fixtures"
+      empty_directory_with_keep_file "test/fixtures/files"
+      empty_directory_with_keep_file "test/controllers"
+      empty_directory_with_keep_file "test/mailers"
+      empty_directory_with_keep_file "test/models"
+      empty_directory_with_keep_file "test/helpers"
+      empty_directory_with_keep_file "test/integration"
 
-      template 'test/test_helper.rb'
+      template "test/test_helper.rb"
+    end
+
+    def system_test
+      empty_directory_with_keep_file "test/system"
+
+      template "test/application_system_test_case.rb"
     end
 
     def tmp
@@ -147,18 +171,11 @@ module Rails
     end
 
     def vendor
-      vendor_javascripts
-      vendor_stylesheets
-    end
+      empty_directory_with_keep_file "vendor"
 
-    def vendor_javascripts
-      unless options[:skip_javascript]
-        empty_directory_with_keep_file 'vendor/assets/javascripts'
+      unless options[:skip_yarn]
+        template "package.json"
       end
-    end
-
-    def vendor_stylesheets
-      empty_directory_with_keep_file 'vendor/assets/stylesheets'
     end
   end
 
@@ -178,20 +195,21 @@ module Rails
       class_option :api, type: :boolean,
                          desc: "Preconfigure smaller stack for API only apps"
 
+      class_option :skip_bundle, type: :boolean, aliases: "-B", default: false,
+                                 desc: "Don't run bundle install"
+
       def initialize(*args)
         super
-
-        unless app_path
-          raise Error, "Application name should be provided in arguments. For details run: rails --help"
-        end
 
         if !options[:skip_active_record] && !DATABASES.include?(options[:database])
           raise Error, "Invalid value for --database option. Supported for preconfiguration are: #{DATABASES.join(", ")}."
         end
 
-        # Force sprockets to be skipped when generating API only apps.
+        # Force sprockets and yarn to be skipped when generating API only apps.
         # Can't modify options hash as it's frozen by default.
-        self.options = options.merge(skip_sprockets: true, skip_javascript: true).freeze if options[:api]
+        if options[:api]
+          self.options = options.merge(skip_sprockets: true, skip_javascript: true, skip_yarn: true).freeze
+        end
       end
 
       public_task :set_default_accessors!
@@ -201,8 +219,9 @@ module Rails
         build(:readme)
         build(:rakefile)
         build(:configru)
-        build(:gitignore) unless options[:skip_git]
-        build(:gemfile)   unless options[:skip_gemfile]
+        build(:gitignore)   unless options[:skip_git]
+        build(:gemfile)     unless options[:skip_gemfile]
+        build(:version_control)
       end
 
       def create_app_files
@@ -222,6 +241,11 @@ module Rails
       end
       remove_task :update_config_files
 
+      def display_upgrade_guide_info
+        say "\nAfter this, check Rails upgrade guide at http://guides.rubyonrails.org/upgrading_ruby_on_rails.html for more details about upgrading your app."
+      end
+      remove_task :display_upgrade_guide_info
+
       def create_boot_file
         template "config/boot.rb"
       end
@@ -232,6 +256,7 @@ module Rails
       end
 
       def create_db_files
+        return if options[:skip_active_record]
         build(:db)
       end
 
@@ -251,59 +276,111 @@ module Rails
         build(:test) unless options[:skip_test]
       end
 
+      def create_system_test_files
+        build(:system_test) unless options[:skip_system_test] || options[:skip_test] || options[:api]
+      end
+
       def create_tmp_files
         build(:tmp)
       end
 
       def create_vendor_files
         build(:vendor)
+
+        if options[:skip_yarn]
+          remove_file "package.json"
+        end
       end
 
       def delete_app_assets_if_api_option
         if options[:api]
-          remove_dir 'app/assets'
-          remove_dir 'lib/assets'
-          remove_dir 'tmp/cache/assets'
-          remove_dir 'vendor/assets'
+          remove_dir "app/assets"
+          remove_dir "lib/assets"
+          remove_dir "tmp/cache/assets"
         end
       end
 
       def delete_app_helpers_if_api_option
         if options[:api]
-          remove_dir 'app/helpers'
-          remove_dir 'test/helpers'
+          remove_dir "app/helpers"
+          remove_dir "test/helpers"
         end
       end
 
-      def delete_app_views_if_api_option
+      def delete_application_layout_file_if_api_option
         if options[:api]
-          remove_dir 'app/views'
+          remove_file "app/views/layouts/application.html.erb"
+        end
+      end
+
+      def delete_public_files_if_api_option
+        if options[:api]
+          remove_file "public/404.html"
+          remove_file "public/422.html"
+          remove_file "public/500.html"
+          remove_file "public/apple-touch-icon-precomposed.png"
+          remove_file "public/apple-touch-icon.png"
+          remove_file "public/favicon.ico"
         end
       end
 
       def delete_js_folder_skipping_javascript
         if options[:skip_javascript]
-          remove_dir 'app/assets/javascripts'
+          remove_dir "app/assets/javascripts"
         end
       end
 
       def delete_assets_initializer_skipping_sprockets
         if options[:skip_sprockets]
-          remove_file 'config/initializers/assets.rb'
+          remove_file "config/initializers/assets.rb"
         end
       end
 
-      def delete_active_record_initializers_skipping_active_record
+      def delete_application_record_skipping_active_record
         if options[:skip_active_record]
-          remove_file 'config/initializers/active_record_belongs_to_required_by_default.rb'
+          remove_file "app/models/application_record.rb"
+        end
+      end
+
+      def delete_action_mailer_files_skipping_action_mailer
+        if options[:skip_action_mailer]
+          remove_file "app/views/layouts/mailer.html.erb"
+          remove_file "app/views/layouts/mailer.text.erb"
+          remove_dir "app/mailers"
+          remove_dir "test/mailers"
+        end
+      end
+
+      def delete_action_cable_files_skipping_action_cable
+        if options[:skip_action_cable]
+          remove_file "config/cable.yml"
+          remove_file "app/assets/javascripts/cable.js"
+          remove_dir "app/channels"
         end
       end
 
       def delete_non_api_initializers_if_api_option
         if options[:api]
-          remove_file 'config/initializers/session_store.rb'
-          remove_file 'config/initializers/cookies_serializer.rb'
+          remove_file "config/initializers/cookies_serializer.rb"
         end
+      end
+
+      def delete_api_initializers
+        unless options[:api]
+          remove_file "config/initializers/cors.rb"
+        end
+      end
+
+      def delete_new_framework_defaults
+        # Sprockets owns the only new default for 5.1: if it's disabled,
+        # we don't want the file.
+        unless options[:update] && !options[:skip_sprockets]
+          remove_file "config/initializers/new_framework_defaults_5_1.rb"
+        end
+      end
+
+      def delete_bin_yarn_if_skip_yarn_option
+        remove_file "bin/yarn" if options[:skip_yarn]
       end
 
       def finish_template
@@ -311,17 +388,17 @@ module Rails
       end
 
       public_task :apply_rails_template, :run_bundle
-      public_task :generate_spring_binstubs
+      public_task :run_webpack, :generate_spring_binstubs
 
       def run_after_bundle_callbacks
         @after_bundle_callbacks.each(&:call)
       end
 
-    protected
-
       def self.banner
-        "rails new #{self.arguments.map(&:usage).join(' ')} [options]"
+        "rails new #{arguments.map(&:usage).join(' ')} [options]"
       end
+
+    private
 
       # Define file as an alias to create_file for backwards compatibility.
       def file(*args, &block)
@@ -329,7 +406,7 @@ module Rails
       end
 
       def app_name
-        @app_name ||= (defined_app_const_base? ? defined_app_name : File.basename(destination_root)).tr('\\', '').tr(". ", "_")
+        @app_name ||= (defined_app_const_base? ? defined_app_name : File.basename(destination_root)).tr('\\', "").tr(". ", "_")
       end
 
       def defined_app_name
@@ -344,7 +421,7 @@ module Rails
       alias :defined_app_const_base? :defined_app_const_base
 
       def app_const_base
-        @app_const_base ||= defined_app_const_base || app_name.gsub(/\W/, '_').squeeze('_').camelize
+        @app_const_base ||= defined_app_const_base || app_name.gsub(/\W/, "_").squeeze("_").camelize
       end
       alias :camelized :app_const_base
 
@@ -356,7 +433,9 @@ module Rails
         if app_const =~ /^\d/
           raise Error, "Invalid application name #{app_name}. Please give a name which does not start with numbers."
         elsif RESERVED_NAMES.include?(app_name)
-          raise Error, "Invalid application name #{app_name}. Please give a name which does not match one of the reserved rails words: #{RESERVED_NAMES}"
+          raise Error, "Invalid application name #{app_name}. Please give a " \
+                       "name which does not match one of the reserved rails " \
+                       "words: #{RESERVED_NAMES.join(", ")}"
         elsif Object.const_defined?(app_const_base)
           raise Error, "Invalid application name #{app_name}, constant #{app_const_base} is already in use. Please choose another application name."
         end
@@ -377,7 +456,7 @@ module Rails
           "/opt/local/var/run/mysql4/mysqld.sock",  # mac + darwinports + mysql4
           "/opt/local/var/run/mysql5/mysqld.sock",  # mac + darwinports + mysql5
           "/opt/lampp/var/mysql/mysql.sock"         # xampp for linux
-        ].find { |f| File.exist?(f) } unless RbConfig::CONFIG['host_os'] =~ /mswin|mingw/
+        ].find { |f| File.exist?(f) } unless Gem.win_platform?
       end
 
       def get_builder_class
@@ -405,14 +484,14 @@ module Rails
       end
 
       def self.default_rc_file
-        File.expand_path('~/.railsrc')
+        File.expand_path("~/.railsrc")
       end
 
       private
 
         def handle_version_request!(argument)
-          if ['--version', '-v'].include?(argument)
-            require 'rails/version'
+          if ["--version", "-v"].include?(argument)
+            require "rails/version"
             puts "Rails #{Rails::VERSION::STRING}"
             exit(0)
           end
@@ -422,20 +501,20 @@ module Rails
           if argument == "new"
             yield
           else
-            ['--help'] + argv.drop(1)
+            ["--help"] + argv.drop(1)
           end
         end
 
         def handle_rails_rc!(argv)
-          if argv.find { |arg| arg == '--no-rc' }
-            argv.reject { |arg| arg == '--no-rc' }
+          if argv.find { |arg| arg == "--no-rc" }
+            argv.reject { |arg| arg == "--no-rc" }
           else
             railsrc(argv) { |rc_argv, rc| insert_railsrc_into_argv!(rc_argv, rc) }
           end
         end
 
         def railsrc(argv)
-          if (customrc = argv.index{ |x| x.include?("--rc=") })
+          if (customrc = argv.index { |x| x.include?("--rc=") })
             fname = File.expand_path(argv[customrc].gsub(/--rc=/, ""))
             yield(argv.take(customrc) + argv.drop(customrc + 1), fname)
           else

@@ -1,5 +1,5 @@
-require 'generators/generators_test_helper'
-require 'rails/generators/mailer/mailer_generator'
+require "generators/generators_test_helper"
+require "rails/generators/mailer/mailer_generator"
 
 class MailerGeneratorTest < Rails::Generators::TestCase
   include GeneratorsTestHelper
@@ -12,13 +12,10 @@ class MailerGeneratorTest < Rails::Generators::TestCase
       assert_no_match(/default from: "from@example.com"/, mailer)
       assert_no_match(/layout :mailer_notifier/, mailer)
     end
-  end
 
-  def test_application_mailer_skeleton_is_created
-    run_generator
     assert_file "app/mailers/application_mailer.rb" do |mailer|
       assert_match(/class ApplicationMailer < ActionMailer::Base/, mailer)
-      assert_match(/default from: "from@example.com"/, mailer)
+      assert_match(/default from: 'from@example.com'/, mailer)
       assert_match(/layout 'mailer'/, mailer)
     end
   end
@@ -33,7 +30,7 @@ class MailerGeneratorTest < Rails::Generators::TestCase
 
   def test_check_class_collision
     Object.send :const_set, :NotifierMailer, Class.new
-    content = capture(:stderr){ run_generator }
+    content = capture(:stderr) { run_generator }
     assert_match(/The name 'NotifierMailer' is either already used in your application or reserved/, content)
   ensure
     Object.send :remove_const, :NotifierMailer
@@ -62,7 +59,7 @@ class MailerGeneratorTest < Rails::Generators::TestCase
 
   def test_check_test_class_collision
     Object.send :const_set, :NotifierMailerTest, Class.new
-    content = capture(:stderr){ run_generator }
+    content = capture(:stderr) { run_generator }
     assert_match(/The name 'NotifierMailerTest' is either already used in your application or reserved/, content)
   ensure
     Object.send :remove_const, :NotifierMailerTest
@@ -70,7 +67,7 @@ class MailerGeneratorTest < Rails::Generators::TestCase
 
   def test_check_preview_class_collision
     Object.send :const_set, :NotifierMailerPreview, Class.new
-    content = capture(:stderr){ run_generator }
+    content = capture(:stderr) { run_generator }
     assert_match(/The name 'NotifierMailerPreview' is either already used in your application or reserved/, content)
   ensure
     Object.send :remove_const, :NotifierMailerPreview
@@ -106,15 +103,13 @@ class MailerGeneratorTest < Rails::Generators::TestCase
     end
 
     assert_file "app/views/layouts/mailer.html.erb" do |view|
-      assert_match(%r{<html>\n  <body>\n    <%= yield %>\n  </body>\n</html>}, view)
+      assert_match(%r{<body>\n    <%= yield %>\n  </body>}, view)
     end
   end
 
   def test_invokes_default_template_engine_even_with_no_action
     run_generator ["notifier"]
     assert_file "app/views/notifier_mailer"
-    assert_file "app/views/layouts/mailer.text.erb"
-    assert_file "app/views/layouts/mailer.html.erb"
   end
 
   def test_logs_if_the_template_engine_cannot_be_found
@@ -162,10 +157,6 @@ class MailerGeneratorTest < Rails::Generators::TestCase
     assert_no_file "app/views/notifier/bar.text.erb"
     assert_no_file "app/views/notifier/foo.html.erb"
     assert_no_file "app/views/notifier/bar.html.erb"
-
-    assert_file "app/mailers/application_mailer.rb"
-    assert_file "app/views/layouts/mailer.text.erb"
-    assert_file "app/views/layouts/mailer.html.erb"
   end
 
   def test_mailer_suffix_is_not_duplicated

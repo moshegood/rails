@@ -41,11 +41,11 @@ module ActionView
       #
       # ==== \Template digest
       #
-      # The template digest that's added to the cache key is computed by taking an md5 of the
+      # The template digest that's added to the cache key is computed by taking an MD5 of the
       # contents of the entire template file. This ensures that your caches will automatically
       # expire when you change the template file.
       #
-      # Note that the md5 is taken of the entire template file, not just what's within the
+      # Note that the MD5 is taken of the entire template file, not just what's within the
       # cache do/end call. So it's possible that changing something outside of that call will
       # still expire the cache.
       #
@@ -69,11 +69,11 @@ module ActionView
       #   render 'comments/comments'
       #   render('comments/comments')
       #
-      #   render "header" => render("comments/header")
+      #   render "header" translates to render("comments/header")
       #
-      #   render(@topic)         => render("topics/topic")
-      #   render(topics)         => render("topics/topic")
-      #   render(message.topics) => render("topics/topic")
+      #   render(@topic)         translates to render("topics/topic")
+      #   render(topics)         translates to render("topics/topic")
+      #   render(message.topics) translates to render("topics/topic")
       #
       # It's not possible to derive all render calls like that, though.
       # Here are a few examples of things that can't be derived:
@@ -88,7 +88,7 @@ module ActionView
       #
       # === Explicit dependencies
       #
-      # Some times you'll have template dependencies that can't be derived at all. This is typically
+      # Sometimes you'll have template dependencies that can't be derived at all. This is typically
       # the case when you have template rendering that happens in helpers. Here's an example:
       #
       #   <%= render_sortable_todolists @project.todolists %>
@@ -98,7 +98,19 @@ module ActionView
       #   <%# Template Dependency: todolists/todolist %>
       #   <%= render_sortable_todolists @project.todolists %>
       #
-      # The pattern used to match these is <tt>/# Template Dependency: (\S+)/</tt>,
+      # In some cases, like a single table inheritance setup, you might have
+      # a bunch of explicit dependencies. Instead of writing every template out,
+      # you can use a wildcard to match any template in a directory:
+      #
+      #   <%# Template Dependency: events/* %>
+      #   <%= render_categorizable_events @person.events %>
+      #
+      # This marks every template in the directory as a dependency. To find those
+      # templates, the wildcard path must be absolutely defined from app/views or paths
+      # otherwise added with +prepend_view_path+ or +append_view_path+.
+      # This way the wildcard for `app/views/recordings/events` would be `recordings/events/*` etc.
+      #
+      # The pattern used to match explicit dependencies is <tt>/# Template Dependency: (\S+)/</tt>,
       # so it's important that you type it out just so.
       # You can only declare one template dependency per line.
       #
@@ -106,7 +118,7 @@ module ActionView
       #
       # If you use a helper method, for example, inside a cached block and
       # you then update that helper, you'll have to bump the cache as well.
-      # It doesn't really matter how you do it, but the md5 of the template file
+      # It doesn't really matter how you do it, but the MD5 of the template file
       # must change. One recommendation is to simply be explicit in a comment, like:
       #
       #   <%# Helper Dependency Updated: May 6, 2012 at 6pm %>
@@ -114,32 +126,42 @@ module ActionView
       #
       # Now all you have to do is change that timestamp when the helper method changes.
       #
-      # === Automatic Collection Caching
+      # === Collection Caching
       #
-      # When rendering collections such as:
+      # When rendering a collection of objects that each use the same partial, a `cached`
+      # option can be passed.
       #
-      #   <%= render @notifications %>
-      #   <%= render partial: 'notifications/notification', collection: @notifications %>
+      # For collections rendered such:
       #
-      # If the notifications/_notification partial starts with a cache call as:
+      #   <%= render partial: 'projects/project', collection: @projects, cached: true %>
       #
-      #   <% cache notification do %>
-      #     <%= notification.name %>
+      # The `cached: true` will make Action View's rendering read several templates
+      # from cache at once instead of one call per template.
+      #
+      # Templates in the collection not already cached are written to cache.
+      #
+      # Works great alongside individual template fragment caching.
+      # For instance if the template the collection renders is cached like:
+      #
+      #   # projects/_project.html.erb
+      #   <% cache project do %>
+      #     <%# ... %>
       #   <% end %>
       #
-      # The collection can then automatically use any cached renders for that
-      # template by reading them at once instead of one by one.
+      # Any collection renders will find those cached templates when attempting
+      # to read multiple templates at once.
       #
-      # See ActionView::Template::Handlers::ERB.resource_cache_call_pattern for
-      # more information on what cache calls make a template eligible for this
-      # collection caching.
+      # If your collection cache depends on multiple sources (try to avoid this to keep things simple),
+      # you can name all these dependencies as part of a block that returns an array:
       #
-      # The automatic cache multi read can be turned off like so:
+      #   <%= render partial: 'projects/project', collection: @projects, cached: -> project { [ project, current_user ] } %>
       #
-      #   <%= render @notifications, cache: false %>
+      # This will include both records as part of the cache key and updating either of them will
+      # expire the cache.
       def cache(name = {}, options = {}, &block)
         if controller.respond_to?(:perform_caching) && controller.perform_caching
-          safe_concat(fragment_for(cache_fragment_name(name, options), options, &block))
+          name_options = options.slice(:skip_digest, :virtual_path)
+          safe_concat(fragment_for(cache_fragment_name(name, name_options), options, &block))
         else
           yield
         end
@@ -189,40 +211,36 @@ module ActionView
         end
       end
 
-      # Given a key (as described in ActionController::Caching::Fragments.expire_fragment),
-      # returns a key suitable for use in reading, writing, or expiring a
-      # cached fragment. All keys are prefixed with <tt>views/</tt> and uses
-      # ActiveSupport::Cache.expand_cache_key for the expansion.
-      def fragment_cache_key(key)
-        ActiveSupport::Cache.expand_cache_key(key.is_a?(Hash) ? url_for(key).split("://").last : key, :views)
-      end
+      attr_reader :cache_hit # :nodoc:
 
     private
 
-      def fragment_name_with_digest(name, virtual_path) #:nodoc:
+      def fragment_name_with_digest(name, virtual_path)
         virtual_path ||= @virtual_path
         if virtual_path
-          names  = Array(name.is_a?(Hash) ? controller.url_for(name).split("://").last : name)
+          name = controller.url_for(name).split("://").last if name.is_a?(Hash)
           digest = Digestor.digest name: virtual_path, finder: lookup_context, dependencies: view_cache_dependencies
-
-          [ *names, digest ]
+          [ name, digest ]
         else
           name
         end
       end
 
-      # TODO: Create an object that has caching read/write on it
-      def fragment_for(name = {}, options = nil, &block) #:nodoc:
-        read_fragment_for(name, options) || write_fragment_for(name, options, &block)
+      def fragment_for(name = {}, options = nil, &block)
+        if content = read_fragment_for(name, options)
+          @cache_hit = true
+          content
+        else
+          @cache_hit = false
+          write_fragment_for(name, options, &block)
+        end
       end
 
-      def read_fragment_for(name, options) #:nodoc:
+      def read_fragment_for(name, options)
         controller.read_fragment(name, options)
       end
 
-      def write_fragment_for(name, options) #:nodoc:
-        # VIEW TODO: Make #capture usable outside of ERB
-        # This dance is needed because Builder can't use capture
+      def write_fragment_for(name, options)
         pos = output_buffer.length
         yield
         output_safe = output_buffer.html_safe?

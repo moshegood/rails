@@ -1,5 +1,10 @@
 source 'https://rubygems.org'
 
+git_source(:github) do |repo_name|
+  repo_name = "#{repo_name}/#{repo_name}" unless repo_name.include?("/")
+  "https://github.com/#{repo_name}.git"
+end
+
 <% gemfile_entries.each do |gem| -%>
 <% if gem.comment -%>
 
@@ -15,16 +20,10 @@ source 'https://rubygems.org'
 # Use ActiveModel has_secure_password
 # gem 'bcrypt', '~> 3.1.7'
 
-# Use Unicorn as the app server
-# gem 'unicorn'
-
 # Use Capistrano for deployment
 # gem 'capistrano-rails', group: :development
 
 <%- if options.api? -%>
-# Use ActiveModelSerializers to serialize JSON responses
-gem 'active_model_serializers', '~> 0.10.0.rc2'
-
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin AJAX possible
 # gem 'rack-cors'
 
@@ -32,24 +31,35 @@ gem 'active_model_serializers', '~> 0.10.0.rc2'
 <% if RUBY_ENGINE == 'ruby' -%>
 group :development, :test do
   # Call 'byebug' anywhere in the code to stop execution and get a debugger console
-  gem 'byebug'
+  gem 'byebug', platforms: [:mri, :mingw, :x64_mingw]
+  <%- unless options.skip_system_test? || options.api? -%>
+  # Adds support for Capybara system testing and selenium driver
+  gem 'capybara', '~> 2.13.0'
+  gem 'selenium-webdriver'
+  <%- end -%>
 end
 
 group :development do
-  # Access an IRB console on exception pages or by using <%%= console %> in views
+<%- unless options.api? -%>
+  # Access an IRB console on exception pages or by using <%%= console %> anywhere in the code.
   <%- if options.dev? || options.edge? -%>
   gem 'web-console', github: 'rails/web-console'
   <%- else -%>
-  gem 'web-console', '~> 2.0'
+  gem 'web-console', '>= 3.3.0'
   <%- end -%>
-<%- if spring_install? %>
+<%- end -%>
+<% if depend_on_listen? -%>
+  gem 'listen', '>= 3.0.5', '< 3.2'
+<% end -%>
+<% if spring_install? -%>
   # Spring speeds up development by keeping your application running in the background. Read more: https://github.com/rails/spring
   gem 'spring'
+<% if depend_on_listen? -%>
+  gem 'spring-watcher-listen', '~> 2.0.0'
+<% end -%>
 <% end -%>
 end
 <% end -%>
-<% if RUBY_PLATFORM.match(/bccwin|cygwin|emx|mingw|mswin|wince|java/) -%>
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem 'tzinfo-data', platforms: [:mingw, :mswin, :x64_mingw, :jruby]
-<% end -%>

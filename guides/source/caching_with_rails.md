@@ -3,12 +3,24 @@
 Caching with Rails: An Overview
 ===============================
 
-This guide is an introduction to speeding up your Rails app with caching.
+This guide is an introduction to speeding up your Rails application with caching.
+
+Caching means to store content generated during the request-response cycle and
+to reuse it when responding to similar requests.
+
+Caching is often the most effective way to boost an application's performance.
+Through caching, web sites running on a single server with a single database
+can sustain a load of thousands of concurrent users.
+
+Rails provides a set of caching features out of the box. This guide will teach
+you the scope and purpose of each one of them. Master these techniques and your
+Rails applications can serve millions of views without exorbitant response times
+or server bills.
 
 After reading this guide, you will know:
 
-* Page and action caching.
 * Fragment and Russian doll caching.
+* How to manage the caching dependencies.
 * Alternative cache stores.
 * Conditional GET support.
 
@@ -30,6 +42,11 @@ the relevant `config/environments/*.rb` file:
 ```ruby
 config.action_controller.perform_caching = true
 ```
+
+NOTE: Changing the value of `config.action_controller.perform_caching` will
+only have an effect on the caching provided by the Action Controller component.
+For instance, it will not impact low-level caching, that we address
+[below](#low-level-caching).
 
 ### Page Caching
 
@@ -83,8 +100,8 @@ called key-based expiration.
 
 Cache fragments will also be expired when the view fragment changes (e.g., the
 HTML in the view changes). The string of characters at the end of the key is a
-template tree digest. It is an md5 hash computed based on the contents of the
-view fragment you are caching. If you change the view fragment, the md5 hash
+template tree digest. It is an MD5 hash computed based on the contents of the
+view fragment you are caching. If you change the view fragment, the MD5 hash
 will change, expiring the existing file.
 
 TIP: Cache stores like Memcached will automatically delete old cache files.
@@ -97,6 +114,21 @@ If you want to cache a fragment under certain conditions, you can use
   <%= render product %>
 <% end %>
 ```
+
+#### Collection caching
+
+The `render` helper can also cache individual templates rendered for a collection.
+It can even one up the previous example with `each` by reading all cache
+templates at once instead of one by one. This is done by passing `cached: true` when rendering the collection:
+
+```html+erb
+<%= render partial: 'products/product', collection: @products, cached: true %>
+```
+
+All cached templates from previous renders will be fetched at once with much
+greater speed. Additionally, the templates that haven't yet been cached will be
+written to cache and multi fetched on the next render.
+
 
 ### Russian Doll Caching
 
@@ -122,7 +154,7 @@ For example, take the following view:
 Which in turn renders this view:
 
 ```erb
-<% cache game %>
+<% cache game do %>
   <%= render game %>
 <% end %>
 ```
@@ -134,11 +166,11 @@ your app will serve stale data. To fix this, we tie the models together with
 the `touch` method:
 
 ```ruby
-class Product < ActiveRecord::Base
+class Product < ApplicationRecord
   has_many :games
 end
 
-class Game < ActiveRecord::Base
+class Game < ApplicationRecord
   belongs_to :product, touch: true
 end
 ```
@@ -147,16 +179,103 @@ With `touch` set to true, any action which changes `updated_at` for a game
 record will also change it for the associated product, thereby expiring the
 cache.
 
+### Managing dependencies
+
+In order to correctly invalidate the cache, you need to properly define the
+caching dependencies. Rails is clever enough to handle common cases so you don't
+have to specify anything. However, sometimes, when you're dealing with custom
+helpers for instance, you need to explicitly define them.
+
+#### Implicit dependencies
+
+Most template dependencies can be derived from calls to `render` in the template
+itself. Here are some examples of render calls that `ActionView::Digestor` knows
+how to decode:
+
+```ruby
+render partial: "comments/comment", collection: commentable.comments
+render "comments/comments"
+render 'comments/comments'
+render('comments/comments')
+
+render "header" translates to render("comments/header")
+
+render(@topic)         translates to render("topics/topic")
+render(topics)         translates to render("topics/topic")
+render(message.topics) translates to render("topics/topic")
+```
+
+On the other hand, some calls need to be changed to make caching work properly.
+For instance, if you're passing a custom collection, you'll need to change:
+
+```ruby
+render @project.documents.where(published: true)
+```
+
+to:
+
+```ruby
+render partial: "documents/document", collection: @project.documents.where(published: true)
+```
+
+#### Explicit dependencies
+
+Sometimes you'll have template dependencies that can't be derived at all. This
+is typically the case when rendering happens in helpers. Here's an example:
+
+```html+erb
+<%= render_sortable_todolists @project.todolists %>
+```
+
+You'll need to use a special comment format to call those out:
+
+```html+erb
+<%# Template Dependency: todolists/todolist %>
+<%= render_sortable_todolists @project.todolists %>
+```
+
+In some cases, like a single table inheritance setup, you might have a bunch of
+explicit dependencies. Instead of writing every template out, you can use a
+wildcard to match any template in a directory:
+
+```html+erb
+<%# Template Dependency: events/* %>
+<%= render_categorizable_events @person.events %>
+```
+
+As for collection caching, if the partial template doesn't start with a clean
+cache call, you can still benefit from collection caching by adding a special
+comment format anywhere in the template, like:
+
+```html+erb
+<%# Template Collection: notification %>
+<% my_helper_that_calls_cache(some_arg, notification) do %>
+  <%= notification.name %>
+<% end %>
+```
+
+#### External dependencies
+
+If you use a helper method, for example, inside a cached block and you then update
+that helper, you'll have to bump the cache as well. It doesn't really matter how
+you do it, but the MD5 of the template file must change. One recommendation is to
+simply be explicit in a comment, like:
+
+```html+erb
+<%# Helper Dependency Updated: Jul 28, 2015 at 7pm %>
+<%= some_helper_method(person) %>
+```
+
 ### Low-Level Caching
 
 Sometimes you need to cache a particular value or query result instead of caching view fragments. Rails' caching mechanism works great for storing __any__ kind of information.
 
-The most efficient way to implement low-level caching is using the `Rails.cache.fetch` method. This method does both reading and writing to the cache. When passed only a single argument, the key is fetched and value from the cache is returned. If a block is passed, the result of the block will be cached to the given key and the result is returned.
+The most efficient way to implement low-level caching is using the `Rails.cache.fetch` method. This method does both reading and writing to the cache. When passed only a single argument, the key is fetched and value from the cache is returned. If a block is passed, that block will be executed in the event of a cache miss. The return value of the block will be written to the cache under the given cache key, and that return value will be returned. In case of cache hit, the cached value will be returned without executing the block.
 
 Consider the following example. An application has a `Product` model with an instance method that looks up the product’s price on a competing website. The data returned by this method would be perfect for low-level caching:
 
 ```ruby
-class Product < ActiveRecord::Base
+class Product < ApplicationRecord
   def competing_price
     Rails.cache.fetch("#{cache_key}/competing_price", expires_in: 12.hours) do
       Competitor::API.find_price(id)
@@ -202,16 +321,17 @@ persistent fashion, you can with low level caching.
 Cache Stores
 ------------
 
-Rails provides different stores for the cached data created by **action** and **fragment** caches.
-
-TIP: Page caches are always stored on disk.
+Rails provides different stores for the cached data (apart from SQL and page
+caching).
 
 ### Configuration
 
-You can set up your application's default cache store by calling `config.cache_store=` in the Application definition inside your `config/application.rb` file or in an Application.configure block in an environment specific configuration file (i.e. `config/environments/*.rb`). The first argument will be the cache store to use and the rest of the argument will be passed as arguments to the cache store constructor.
+You can set up your application's default cache store by setting the
+`config.cache_store` configuration option. Other parameters can be passed as
+arguments to the cache store's constructor:
 
 ```ruby
-config.cache_store = :memory_store
+config.cache_store = :memory_store, { size: 64.megabytes }
 ```
 
 NOTE: Alternatively, you can call `ActionController::Base.cache_store` outside of a configuration block.
@@ -236,6 +356,19 @@ There are some common options used by all cache implementations. These can be pa
 
 * `:race_condition_ttl` - This option is used in conjunction with the `:expires_in` option. It will prevent race conditions when cache entries expire by preventing multiple processes from simultaneously regenerating the same entry (also known as the dog pile effect). This option sets the number of seconds that an expired entry can be reused while a new value is being regenerated. It's a good practice to set this value if you use the `:expires_in` option.
 
+#### Custom Cache Stores
+
+You can create your own custom cache store by simply extending
+`ActiveSupport::Cache::Store` and implementing the appropriate methods. This way,
+you can swap in any number of caching technologies into your Rails application.
+
+To use a custom cache store, simply set the cache store to a new instance of your
+custom class.
+
+```ruby
+config.cache_store = MyCacheStore.new
+```
+
 ### ActiveSupport::Cache::MemoryStore
 
 This cache store keeps entries in memory in the same Ruby process. The cache
@@ -248,7 +381,7 @@ config.cache_store = :memory_store, { size: 64.megabytes }
 ```
 
 If you're running multiple Ruby on Rails server processes (which is the case
-if you're using mongrel_cluster or Phusion Passenger), then your Rails server
+if you're using Phusion Passenger or puma clustered mode), then your Rails server
 process instances won't be able to share cache data with each other. This cache
 store is not appropriate for large application deployments. However, it can
 work well for small, low traffic sites with only a couple of server processes,
@@ -263,7 +396,7 @@ config.cache_store = :file_store, "/path/to/cache/directory"
 ```
 
 With this cache store, multiple server processes on the same host can share a
-cache. The cache store is appropriate for low to medium traffic sites that are
+cache. This cache store is appropriate for low to medium traffic sites that are
 served off one or two hosts. Server processes running on different hosts could
 share a cache by using a shared file system, but that setup is not recommended.
 
@@ -287,36 +420,6 @@ The `write` and `fetch` methods on this cache accept two additional options that
 config.cache_store = :mem_cache_store, "cache-1.example.com", "cache-2.example.com"
 ```
 
-### ActiveSupport::Cache::EhcacheStore
-
-If you are using JRuby you can use Terracotta's Ehcache as the cache store for your application. Ehcache is an open source Java cache that also offers an enterprise version with increased scalability, management, and commercial support. You must first install the jruby-ehcache-rails3 gem (version 1.1.0 or later) to use this cache store.
-
-```ruby
-config.cache_store = :ehcache_store
-```
-
-When initializing the cache, you may use the `:ehcache_config` option to specify the Ehcache config file to use (where the default is "ehcache.xml" in your Rails config directory), and the :cache_name option to provide a custom name for your cache (the default is rails_cache).
-
-In addition to the standard `:expires_in` option, the `write` method on this cache can also accept the additional `:unless_exist` option, which will cause the cache store to use Ehcache's `putIfAbsent` method instead of `put`, and therefore will not overwrite an existing entry. Additionally, the `write` method supports all of the properties exposed by the [Ehcache Element class](http://ehcache.org/apidocs/net/sf/ehcache/Element.html) , including:
-
-| Property                    | Argument Type       | Description                                                 |
-| --------------------------- | ------------------- | ----------------------------------------------------------- |
-| elementEvictionData         | ElementEvictionData | Sets this element's eviction data instance.                 |
-| eternal                     | boolean             | Sets whether the element is eternal.                        |
-| timeToIdle, tti             | int                 | Sets time to idle                                           |
-| timeToLive, ttl, expires_in | int                 | Sets time to Live                                           |
-| version                     | long                | Sets the version attribute of the ElementAttributes object. |
-
-These options are passed to the `write` method as Hash options using either camelCase or underscore notation, as in the following examples:
-
-```ruby
-Rails.cache.write('key', 'value', time_to_idle: 60.seconds, timeToLive: 600.seconds)
-caches_action :index, expires_in: 60.seconds, unless_exist: true
-```
-
-For more information about Ehcache, see [http://ehcache.org/](http://ehcache.org/) .
-For more information about Ehcache for JRuby and Rails, see [http://ehcache.org/documentation/jruby.html](http://ehcache.org/documentation/jruby.html)
-
 ### ActiveSupport::Cache::NullStore
 
 This cache store implementation is meant to be used only in development or test environments and it never stores anything. This can be very useful in development when you have code that interacts directly with `Rails.cache` but caching may interfere with being able to see the results of code changes. With this cache store, all `fetch` and `read` operations will result in a miss.
@@ -325,19 +428,13 @@ This cache store implementation is meant to be used only in development or test 
 config.cache_store = :null_store
 ```
 
-### Custom Cache Stores
+Cache Keys
+----------
 
-You can create your own custom cache store by simply extending `ActiveSupport::Cache::Store` and implementing the appropriate methods. In this way, you can swap in any number of caching technologies into your Rails application.
-
-To use a custom cache store, simply set the cache store to a new instance of the class.
-
-```ruby
-config.cache_store = MyCacheStore.new
-```
-
-### Cache Keys
-
-The keys used in a cache can be any object that responds to either `:cache_key` or `:to_param`. You can implement the `:cache_key` method on your classes if you need to generate custom keys. Active Record will generate keys based on the class name and record id.
+The keys used in a cache can be any object that responds to either `cache_key` or
+`to_param`. You can implement the `cache_key` method on your classes if you need
+to generate custom keys. Active Record will generate keys based on the class name
+and record id.
 
 You can use Hashes and Arrays of values as cache keys.
 
@@ -346,7 +443,12 @@ You can use Hashes and Arrays of values as cache keys.
 Rails.cache.read(site: "mysite", owners: [owner_1, owner_2])
 ```
 
-The keys you use on `Rails.cache` will not be the same as those actually used with the storage engine. They may be modified with a namespace or altered to fit technology backend constraints. This means, for instance, that you can't save values with `Rails.cache` and then try to pull them out with the `memcache-client` gem. However, you also don't need to worry about exceeding the memcached size limit or violating syntax rules.
+The keys you use on `Rails.cache` will not be the same as those actually used with
+the storage engine. They may be modified with a namespace or altered to fit
+technology backend constraints. This means, for instance, that you can't save
+values with `Rails.cache` and then try to pull them out with the `dalli` gem.
+However, you also don't need to worry about exceeding the memcached size limit or
+violating syntax rules.
 
 Conditional GET support
 -----------------------
@@ -408,6 +510,78 @@ class ProductsController < ApplicationController
     fresh_when last_modified: @product.published_at.utc, etag: @product
   end
 end
+```
+
+Sometimes we want to cache response, for example a static page, that never gets
+expired. To achieve this, we can use `http_cache_forever` helper and by doing
+so browser and proxies will cache it indefinitely.
+
+By default cached responses will be private, cached only on the user's web
+browser. To allow proxies to cache the response, set `public: true` to indicate
+that they can serve the cached response to all users.
+
+Using this helper, `last_modified` header is set to `Time.new(2011, 1, 1).utc`
+and `expires` header is set to a 100 years.
+
+WARNING: Use this method carefully as browser/proxy won't be able to invalidate
+the cached response unless browser cache is forcefully cleared.
+
+```ruby
+class HomeController < ApplicationController
+  def index
+    http_cache_forever(public: true) do
+      render
+    end
+  end
+end
+```
+
+### Strong v/s Weak ETags
+
+Rails generates weak ETags by default. Weak ETags allow semantically equivalent
+responses to have the same ETags, even if their bodies do not match exactly.
+This is useful when we don't want the page to be regenerated for minor changes in
+response body.
+
+Weak ETags have a leading `W/` to differentiate them from strong ETags.
+
+```
+  W/"618bbc92e2d35ea1945008b42799b0e7" → Weak ETag
+  "618bbc92e2d35ea1945008b42799b0e7" → Strong ETag
+```
+
+Unlike weak ETag, strong ETag implies that response should be exactly the same
+and byte by byte identical. Useful when doing Range requests within a
+large video or PDF file. Some CDNs support only strong ETags, like Akamai.
+If you absolutely need to generate a strong ETag, it can be done as follows.
+
+```ruby
+  class ProductsController < ApplicationController
+    def show
+      @product = Product.find(params[:id])
+      fresh_when last_modified: @product.published_at.utc, strong_etag: @product
+    end
+  end
+```
+
+You can also set the strong ETag directly on the response.
+
+```ruby
+  response.strong_etag = response.body # => "618bbc92e2d35ea1945008b42799b0e7"
+```
+
+Caching in Development
+----------------------
+
+It's common to want to test the caching strategy of your application
+in development mode. Rails provides the rake task `dev:cache` to 
+easily toggle caching on/off.
+
+```bash
+$ bin/rails dev:cache
+Development mode is now being cached.
+$ bin/rails dev:cache
+Development mode is no longer being cached.
 ```
 
 References

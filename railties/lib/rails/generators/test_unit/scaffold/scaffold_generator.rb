@@ -1,5 +1,5 @@
-require 'rails/generators/test_unit'
-require 'rails/generators/resource_helpers'
+require "rails/generators/test_unit"
+require "rails/generators/resource_helpers"
 
 module TestUnit # :nodoc:
   module Generators # :nodoc:
@@ -22,7 +22,7 @@ module TestUnit # :nodoc:
       def fixture_name
         @fixture_name ||=
           if mountable_engine?
-            "%s_%s" % [namespaced_path, table_name]
+            (namespace_dirs + [table_name]).join("_")
           else
             table_name
           end
@@ -39,7 +39,7 @@ module TestUnit # :nodoc:
             else
               "#{name}: @#{singular_table_name}.#{name}"
             end
-          end.sort.join(', ')
+          end.sort.join(", ")
         end
     end
   end

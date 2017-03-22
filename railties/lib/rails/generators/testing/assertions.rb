@@ -1,5 +1,3 @@
-require 'shellwords'
-
 module Rails
   module Generators
     module Testing
@@ -31,10 +29,10 @@ module Rails
 
           contents.each do |content|
             case content
-              when String
-                assert_equal content, read
-              when Regexp
-                assert_match content, read
+            when String
+              assert_equal content, read
+            when Regexp
+              assert_match content, read
             end
           end
         end

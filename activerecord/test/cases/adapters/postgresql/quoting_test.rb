@@ -1,5 +1,4 @@
 require "cases/helper"
-require 'ipaddr'
 
 module ActiveRecord
   module ConnectionAdapters
@@ -10,20 +9,20 @@ module ActiveRecord
         end
 
         def test_type_cast_true
-          assert_equal 't', @conn.type_cast(true)
+          assert_equal "t", @conn.type_cast(true)
         end
 
         def test_type_cast_false
-          assert_equal 'f', @conn.type_cast(false)
+          assert_equal "f", @conn.type_cast(false)
         end
 
         def test_quote_float_nan
-          nan = 0.0/0
+          nan = 0.0 / 0
           assert_equal "'NaN'", @conn.quote(nan)
         end
 
         def test_quote_float_infinity
-          infinity = 1.0/0
+          infinity = 1.0 / 0
           assert_equal "'Infinity'", @conn.quote(infinity)
         end
 
@@ -36,7 +35,7 @@ module ActiveRecord
         def test_quote_bit_string
           value = "'); SELECT * FROM users; /*\n01\n*/--"
           type = OID::Bit.new
-          assert_equal nil, @conn.quote(type.serialize(value))
+          assert_nil @conn.quote(type.serialize(value))
         end
       end
     end

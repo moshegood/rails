@@ -1,5 +1,5 @@
-require 'generators/generators_test_helper'
-require 'rails/generators/rails/scaffold_controller/scaffold_controller_generator'
+require "generators/generators_test_helper"
+require "rails/generators/rails/scaffold_controller/scaffold_controller_generator"
 
 module Unknown
   module Generators
@@ -56,7 +56,7 @@ class ScaffoldControllerGeneratorTest < Rails::Generators::TestCase
 
     assert_file "app/controllers/users_controller.rb" do |content|
       assert_match(/def user_params/, content)
-      assert_match(/params\[:user\]/, content)
+      assert_match(/params\.fetch\(:user, \{\}\)/, content)
     end
   end
 
@@ -104,10 +104,10 @@ class ScaffoldControllerGeneratorTest < Rails::Generators::TestCase
     run_generator ["User", "name:string", "age:integer", "organization:references{polymorphic}"]
 
     assert_file "test/controllers/users_controller_test.rb" do |content|
-      assert_match(/class UsersControllerTest < ActionController::TestCase/, content)
+      assert_match(/class UsersControllerTest < ActionDispatch::IntegrationTest/, content)
       assert_match(/test "should get index"/, content)
-      assert_match(/post :create, params: \{ user: \{ age: @user\.age, name: @user\.name, organization_id: @user\.organization_id, organization_type: @user\.organization_type \} \}/, content)
-      assert_match(/patch :update, params: \{ id: @user, user: \{ age: @user\.age, name: @user\.name, organization_id: @user\.organization_id, organization_type: @user\.organization_type \} \}/, content)
+      assert_match(/post users_url, params: \{ user: \{ age: @user\.age, name: @user\.name, organization_id: @user\.organization_id, organization_type: @user\.organization_type \} \}/, content)
+      assert_match(/patch user_url\(@user\), params: \{ user: \{ age: @user\.age, name: @user\.name, organization_id: @user\.organization_id, organization_type: @user\.organization_type \} \}/, content)
     end
   end
 
@@ -115,10 +115,10 @@ class ScaffoldControllerGeneratorTest < Rails::Generators::TestCase
     run_generator ["User"]
 
     assert_file "test/controllers/users_controller_test.rb" do |content|
-      assert_match(/class UsersControllerTest < ActionController::TestCase/, content)
+      assert_match(/class UsersControllerTest < ActionDispatch::IntegrationTest/, content)
       assert_match(/test "should get index"/, content)
-      assert_match(/post :create, params: \{ user: \{  \} \}/, content)
-      assert_match(/patch :update, params: \{ id: @user, user: \{  \} \}/, content)
+      assert_match(/post users_url, params: \{ user: \{  \} \}/, content)
+      assert_match(/patch user_url\(@user\), params: \{ user: \{  \} \}/, content)
     end
   end
 
@@ -182,7 +182,7 @@ class ScaffoldControllerGeneratorTest < Rails::Generators::TestCase
 
     Dir.chdir(engine_path) do
       quietly { `bin/rails g controller dashboard foo` }
-      assert_match(/2 runs, 2 assertions, 0 failures, 0 errors/, `bundle exec rake test 2>&1`)
+      assert_match(/2 runs, 2 assertions, 0 failures, 0 errors/, `bin/rails test 2>&1`)
     end
   end
 
@@ -193,7 +193,7 @@ class ScaffoldControllerGeneratorTest < Rails::Generators::TestCase
 
     Dir.chdir(engine_path) do
       quietly { `bin/rails g controller dashboard foo` }
-      assert_match(/2 runs, 2 assertions, 0 failures, 0 errors/, `bundle exec rake test 2>&1`)
+      assert_match(/2 runs, 2 assertions, 0 failures, 0 errors/, `bin/rails test 2>&1`)
     end
   end
 
@@ -230,16 +230,22 @@ class ScaffoldControllerGeneratorTest < Rails::Generators::TestCase
         assert_match(/@user\.destroy/, m)
       end
     end
+
+    assert_no_file "app/views/users/index.html.erb"
+    assert_no_file "app/views/users/edit.html.erb"
+    assert_no_file "app/views/users/show.html.erb"
+    assert_no_file "app/views/users/new.html.erb"
+    assert_no_file "app/views/users/_form.html.erb"
   end
 
   def test_api_controller_tests
     run_generator ["User", "name:string", "age:integer", "organization:references{polymorphic}", "--api"]
 
     assert_file "test/controllers/users_controller_test.rb" do |content|
-      assert_match(/class UsersControllerTest < ActionController::TestCase/, content)
+      assert_match(/class UsersControllerTest < ActionDispatch::IntegrationTest/, content)
       assert_match(/test "should get index"/, content)
-      assert_match(/post :create, params: \{ user: \{ age: @user\.age, name: @user\.name, organization_id: @user\.organization_id, organization_type: @user\.organization_type \} \}/, content)
-      assert_match(/patch :update, params: \{ id: @user, user: \{ age: @user\.age, name: @user\.name, organization_id: @user\.organization_id, organization_type: @user\.organization_type \} \}/, content)
+      assert_match(/post users_url, params: \{ user: \{ age: @user\.age, name: @user\.name, organization_id: @user\.organization_id, organization_type: @user\.organization_type \} \}, as: :json/, content)
+      assert_match(/patch user_url\(@user\), params: \{ user: \{ age: @user\.age, name: @user\.name, organization_id: @user\.organization_id, organization_type: @user\.organization_type \} \}, as: :json/, content)
       assert_no_match(/assert_redirected_to/, content)
     end
   end

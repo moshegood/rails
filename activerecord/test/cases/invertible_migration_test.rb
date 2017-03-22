@@ -1,9 +1,12 @@
 require "cases/helper"
 
+class Horse < ActiveRecord::Base
+end
+
 module ActiveRecord
   class InvertibleMigrationTest < ActiveRecord::TestCase
-    class SilentMigration < ActiveRecord::Migration
-      def write(text = '')
+    class SilentMigration < ActiveRecord::Migration::Current
+      def write(text = "")
         # sssshhhhh!!
       end
     end
@@ -76,7 +79,33 @@ module ActiveRecord
       end
     end
 
-    class LegacyMigration < ActiveRecord::Migration
+    class ChangeColumnDefault1 < SilentMigration
+      def change
+        create_table("horses") do |t|
+          t.column :name, :string, default: "Sekitoba"
+        end
+      end
+    end
+
+    class ChangeColumnDefault2 < SilentMigration
+      def change
+        change_column_default :horses, :name, from: "Sekitoba", to: "Diomed"
+      end
+    end
+
+    class DisableExtension1 < SilentMigration
+      def change
+        enable_extension "hstore"
+      end
+    end
+
+    class DisableExtension2 < SilentMigration
+      def change
+        disable_extension "hstore"
+      end
+    end
+
+    class LegacyMigration < ActiveRecord::Migration::Current
       def self.up
         create_table("horses") do |t|
           t.column :content, :text
@@ -119,6 +148,14 @@ module ActiveRecord
     class RevertNamedIndexMigration2 < SilentMigration
       def change
         add_index :horses, :content, name: "horses_index_named"
+      end
+    end
+
+    class RevertCustomForeignKeyTable < SilentMigration
+      def change
+        change_table(:horses) do |t|
+          t.references :owner, foreign_key: { to_table: :developers }
+        end
       end
     end
 
@@ -186,7 +223,7 @@ module ActiveRecord
       InvertibleMigration.new.migrate :up
       received = []
       migration = InvertibleByPartsMigration.new
-      migration.test = ->(dir){
+      migration.test = ->(dir) {
         assert migration.connection.table_exists?("horses")
         assert migration.connection.table_exists?("new_horses")
         received << dir
@@ -223,8 +260,44 @@ module ActiveRecord
       assert !revert.connection.table_exists?("horses")
     end
 
+    def test_migrate_revert_change_column_default
+      migration1 = ChangeColumnDefault1.new
+      migration1.migrate(:up)
+      assert_equal "Sekitoba", Horse.new.name
+
+      migration2 = ChangeColumnDefault2.new
+      migration2.migrate(:up)
+      Horse.reset_column_information
+      assert_equal "Diomed", Horse.new.name
+
+      migration2.migrate(:down)
+      Horse.reset_column_information
+      assert_equal "Sekitoba", Horse.new.name
+    end
+
+    if current_adapter?(:PostgreSQLAdapter)
+      def test_migrate_enable_and_disable_extension
+        migration1 = InvertibleMigration.new
+        migration2 = DisableExtension1.new
+        migration3 = DisableExtension2.new
+
+        migration1.migrate(:up)
+        migration2.migrate(:up)
+        assert_equal true, Horse.connection.extension_enabled?("hstore")
+
+        migration3.migrate(:up)
+        assert_equal false, Horse.connection.extension_enabled?("hstore")
+
+        migration3.migrate(:down)
+        assert_equal true, Horse.connection.extension_enabled?("hstore")
+
+        migration2.migrate(:down)
+        assert_equal false, Horse.connection.extension_enabled?("hstore")
+      end
+    end
+
     def test_revert_order
-      block = Proc.new{|t| t.string :name }
+      block = Proc.new { |t| t.string :name }
       recorder = ActiveRecord::Migration::CommandRecorder.new(ActiveRecord::Base.connection)
       recorder.instance_eval do
         create_table("apples", &block)
@@ -270,18 +343,25 @@ module ActiveRecord
     end
 
     def test_migrate_down_with_table_name_prefix
-      ActiveRecord::Base.table_name_prefix = 'p_'
-      ActiveRecord::Base.table_name_suffix = '_s'
+      ActiveRecord::Base.table_name_prefix = "p_"
+      ActiveRecord::Base.table_name_suffix = "_s"
       migration = InvertibleMigration.new
       migration.migrate(:up)
       assert_nothing_raised { migration.migrate(:down) }
       assert !ActiveRecord::Base.connection.table_exists?("p_horses_s"), "p_horses_s should not exist"
     ensure
-      ActiveRecord::Base.table_name_prefix = ActiveRecord::Base.table_name_suffix = ''
+      ActiveRecord::Base.table_name_prefix = ActiveRecord::Base.table_name_suffix = ""
+    end
+
+    def test_migrations_can_handle_foreign_keys_to_specific_tables
+      migration = RevertCustomForeignKeyTable.new
+      InvertibleMigration.migrate(:up)
+      migration.migrate(:up)
+      migration.migrate(:down)
     end
 
     # MySQL 5.7 and Oracle do not allow to create duplicate indexes on the same columns
-    unless current_adapter?(:MysqlAdapter, :Mysql2Adapter, :OracleAdapter)
+    unless current_adapter?(:Mysql2Adapter, :OracleAdapter)
       def test_migrate_revert_add_index_with_name
         RevertNamedIndexMigration1.new.migrate(:up)
         RevertNamedIndexMigration2.new.migrate(:up)
@@ -294,6 +374,5 @@ module ActiveRecord
               "horses_index_named index should not exist"
       end
     end
-
   end
 end
